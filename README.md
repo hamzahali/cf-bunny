@@ -25,9 +25,21 @@ A WordPress plugin that seamlessly integrates Cloudflare Stream (Live) with Bunn
 
 ## Installation
 
-1. Upload the `stream-manager-141` directory to `/wp-content/plugins/`
-2. Activate the plugin through the 'Plugins' menu in WordPress
-3. Navigate to **Stream Manager** → **Settings** to configure your API credentials
+### From GitHub
+
+1. Download the latest release ZIP from GitHub
+2. Extract the ZIP file
+3. Rename the extracted folder to `stream-manager` or `cf-bunny`
+4. Upload the renamed folder to `/wp-content/plugins/`
+5. Activate the plugin through the 'Plugins' menu in WordPress
+6. Navigate to **Stream Manager** → **Settings** to configure your API credentials
+
+### Manual Installation
+
+1. Clone or download this repository
+2. Upload the plugin files to `/wp-content/plugins/stream-manager/`
+3. Activate the plugin through the 'Plugins' menu in WordPress
+4. Navigate to **Stream Manager** → **Settings** to configure your API credentials
 
 ## Configuration
 
