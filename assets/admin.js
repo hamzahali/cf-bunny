@@ -14,6 +14,11 @@ jQuery(function($){
   });
 
   $('#sm-create-live').on('click', function(){
+    var title = $('#sm-live-title').val().trim();
+    if (!title) {
+      alert('Title is required');
+      return;
+    }
     var $out = $('#sm-create-live-out').text('Creating...');
     $.post(SM_AJAX.ajaxurl, {
       action:'sm_create_live', nonce:SM_AJAX.nonce,
@@ -27,6 +32,7 @@ jQuery(function($){
       }
       var table = $('<table class="widefat fixed striped" />'); table.append('<thead><tr><th style="width:240px">Field</th><th>Value</th></tr></thead>');
       var tbody = $('<tbody />');
+      tbody.append(row('RTMP URL', 'rtmp://live.cloudflare.com/live', false));
       if (r.data.stream_key) tbody.append(row('Stream Key', r.data.stream_key, false));
       if (r.data.cf_iframe) tbody.append(row('Cloudflare Live Iframe', r.data.cf_iframe, true));
       var uni = SM_AJAX.siteurl+'/?stream_embed=1&slug='+r.data.slug;
@@ -58,7 +64,11 @@ jQuery(function($){
 
   $('#sm-upload-recorded-file').on('click', function(){
     var $out = $('#sm-upload-recorded-out').text('Uploading...');
-    var title = $('#sm-vod-title').val(); var id = $('#sm-picked-id').val();
+    var title = $('#sm-vod-title').val().trim(); var id = $('#sm-picked-id').val();
+    if (!title) {
+      $out.text('Title is required');
+      return;
+    }
     if (!id) { $out.text('Please choose/upload an MP4 first.'); return; }
     $.post(SM_AJAX.ajaxurl, {
       action:'sm_upload_recorded_file',
