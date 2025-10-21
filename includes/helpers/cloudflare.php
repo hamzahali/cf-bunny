@@ -46,5 +46,7 @@ function sm_cf_delete_video($account_id,$token,$video_uid){
     $res=wp_remote_request($url,array('method'=>'DELETE','headers'=>sm_cf_headers($token),'timeout'=>20));
     if (is_wp_error($res)) return $res;
     $code=wp_remote_retrieve_response_code($res);
-    return ($code>=200&&$code<300);
+    $body=wp_remote_retrieve_body($res);
+    if ($code>=200&&$code<300) return true;
+    return new WP_Error('cf_delete_failed',"Cloudflare delete failed with HTTP {$code}",array('code'=>$code,'body'=>$body,'video_uid'=>$video_uid));
 }
