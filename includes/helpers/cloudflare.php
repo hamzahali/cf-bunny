@@ -44,7 +44,7 @@ function sm_cf_enable_and_wait_mp4($account_id,$token,$video_uid,$timeout_sec=30
 }
 
 function sm_cf_delete_video($account_id,$token,$video_uid,$global_api_key='',$global_email=''){
-    $url="https://api.cloudflare.com/client/v4/accounts/{$account_id}/stream/videos/{$video_uid}";
+    $url="https://api.cloudflare.com/client/v4/accounts/{$account_id}/stream/{$video_uid}";
 
     // Use Global API Key + Email if provided, otherwise fall back to Bearer token
     if (!empty($global_api_key) && !empty($global_email)) {
