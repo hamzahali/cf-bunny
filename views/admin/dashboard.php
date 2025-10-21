@@ -73,7 +73,7 @@
     if (!$q->have_posts()) { echo '<p>No streams yet.</p>'; }
     else {
         echo '<table class="widefat fixed striped"><thead><tr>';
-        echo '<th>Title</th><th>Status</th><th>Category</th><th>Year</th><th>Batch</th><th>CF UID</th><th>Bunny GUID</th><th>Created</th><th>Universal Embed</th>';
+        echo '<th>Title</th><th>Status</th><th>Category</th><th>Year</th><th>Batch</th><th>CF UID</th><th>GUID</th><th>Created</th><th>Universal Embed</th>';
         echo '</tr></thead><tbody>';
         while($q->have_posts()){ $q->the_post();
             $pid = get_the_ID();
