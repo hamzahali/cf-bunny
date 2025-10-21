@@ -50,3 +50,62 @@ function sm_cf_delete_video($account_id,$token,$video_uid){
     if ($code>=200&&$code<300) return true;
     return new WP_Error('cf_delete_failed',"Cloudflare delete failed with HTTP {$code}",array('code'=>$code,'body'=>$body,'video_uid'=>$video_uid));
 }
+
+function sm_diagnose_cf_error($http_code, $response_body){
+    $json = json_decode($response_body, true);
+    $cf_error_code = '';
+    $cf_error_msg = '';
+
+    if (isset($json['errors']) && is_array($json['errors']) && !empty($json['errors'])) {
+        $cf_error_code = isset($json['errors'][0]['code']) ? $json['errors'][0]['code'] : '';
+        $cf_error_msg = isset($json['errors'][0]['message']) ? $json['errors'][0]['message'] : '';
+    }
+
+    $diagnosis = array();
+
+    switch ($http_code) {
+        case 404:
+        case '404':
+            $diagnosis['issue'] = 'Video Not Found';
+            $diagnosis['likely_cause'] = 'The video has already been deleted from Cloudflare, or the video UID is incorrect.';
+            $diagnosis['action'] = 'This is normal if the video was already deleted manually or by another process. No action needed.';
+            break;
+        case 403:
+        case '403':
+            $diagnosis['issue'] = 'Permission Denied';
+            $diagnosis['likely_cause'] = 'Your API token does not have permission to delete videos.';
+            $diagnosis['action'] = 'Check your Cloudflare API token permissions. It needs "Stream:Edit" permission.';
+            break;
+        case 401:
+        case '401':
+            $diagnosis['issue'] = 'Authentication Failed';
+            $diagnosis['likely_cause'] = 'Invalid or expired API token, or incorrect account ID.';
+            $diagnosis['action'] = 'Verify your Cloudflare API token and Account ID in settings.';
+            break;
+        case 429:
+        case '429':
+            $diagnosis['issue'] = 'Rate Limited';
+            $diagnosis['likely_cause'] = 'Too many API requests in a short time.';
+            $diagnosis['action'] = 'Wait a few minutes and try again.';
+            break;
+        case 500:
+        case '500':
+        case 502:
+        case '502':
+        case 503:
+        case '503':
+            $diagnosis['issue'] = 'Cloudflare Server Error';
+            $diagnosis['likely_cause'] = 'Temporary issue with Cloudflare Stream API.';
+            $diagnosis['action'] = 'Wait a few minutes and try again. If it persists, check Cloudflare status page.';
+            break;
+        default:
+            $diagnosis['issue'] = 'Unknown Error';
+            $diagnosis['likely_cause'] = "HTTP {$http_code} response from Cloudflare.";
+            $diagnosis['action'] = 'Check the response body for details.';
+    }
+
+    if ($cf_error_code) $diagnosis['cf_error_code'] = $cf_error_code;
+    if ($cf_error_msg) $diagnosis['cf_error_message'] = $cf_error_msg;
+
+    return $diagnosis;
+}

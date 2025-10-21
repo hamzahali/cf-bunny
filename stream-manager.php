@@ -69,6 +69,7 @@ add_action('admin_menu', function(){
     add_submenu_page('sm_dashboard', __('Add Live Video','stream-manager'), __('Add Live Video','stream-manager'), 'manage_options', 'sm_add_live', 'sm_admin_add_live_page');
     add_submenu_page('sm_dashboard', __('Add Recorded Video','stream-manager'), __('Add Recorded Video','stream-manager'), 'manage_options', 'sm_add_recorded', 'sm_admin_add_recorded_page');
     add_submenu_page('sm_dashboard', __('Transfer Logs','stream-manager'), __('Transfer Logs','stream-manager'), 'manage_options', 'sm_logs', 'sm_admin_logs_page');
+    add_submenu_page('sm_dashboard', __('Test Delete','stream-manager'), __('Test Delete','stream-manager'), 'manage_options', 'sm_test_delete', 'sm_admin_test_delete_page');
     add_submenu_page('sm_dashboard', __('Settings','stream-manager'), __('Settings','stream-manager'), 'manage_options', 'sm_settings', 'sm_admin_settings_page');
 });
 
@@ -124,4 +125,5 @@ function sm_admin_dashboard_page(){ echo sm_view('admin/dashboard'); }
 function sm_admin_add_live_page(){ echo sm_view('admin/add-live'); }
 function sm_admin_add_recorded_page(){ echo sm_view('admin/add-recorded'); }
 function sm_admin_logs_page(){ echo sm_view('admin/logs'); }
+function sm_admin_test_delete_page(){ echo sm_view('admin/test-delete'); }
 function sm_admin_settings_page(){ sm_render_settings_page(); }

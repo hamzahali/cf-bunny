@@ -64,3 +64,46 @@ add_action('wp_ajax_sm_upload_recorded_file', function(){
     sm_log('INFO', $post_id, 'Direct VOD uploaded to Bunny', '', '', '', $iframe);
     wp_send_json_success(array('ok'=>true,'iframe'=>$iframe,'hls'=>$hls,'post_id'=>$post_id,'slug'=>get_post_field('post_name',$post_id)));
 });
+
+add_action('wp_ajax_sm_manual_delete_cf_video', function(){
+    check_ajax_referer('sm_ajax_nonce','nonce'); sm_require_cap();
+    $cf_uid = isset($_POST['cf_uid']) ? sanitize_text_field($_POST['cf_uid']) : '';
+    if (empty($cf_uid)) wp_send_json_error(array('message'=>'Video UID is required'));
+
+    $acc = get_option('sm_cf_account_id','');
+    $tok = get_option('sm_cf_api_token','');
+
+    if (empty($acc) || empty($tok)) {
+        wp_send_json_error(array('message'=>'Cloudflare API credentials not configured'));
+    }
+
+    $res = sm_cf_delete_video($acc, $tok, $cf_uid);
+
+    if (is_wp_error($res)) {
+        $data = $res->get_error_data();
+        $code = isset($data['code']) ? $data['code'] : 'unknown';
+        $body = isset($data['body']) ? $data['body'] : '';
+        $error_msg = $res->get_error_message();
+
+        sm_log('ERROR', 0, "Manual CF delete failed {$cf_uid}: {$error_msg} | Response: {$body}", $cf_uid);
+
+        $diagnosis = sm_diagnose_cf_error($code, $body);
+
+        wp_send_json_error(array(
+            'message' => $error_msg,
+            'http_code' => $code,
+            'response_body' => $body,
+            'diagnosis' => $diagnosis,
+            'cf_uid' => $cf_uid
+        ));
+    } elseif ($res === true) {
+        sm_log('INFO', 0, "Manual CF delete successful {$cf_uid}", $cf_uid);
+        wp_send_json_success(array(
+            'message' => "Video {$cf_uid} deleted successfully from Cloudflare",
+            'cf_uid' => $cf_uid
+        ));
+    } else {
+        sm_log('ERROR', 0, "Manual CF delete failed {$cf_uid}: Unknown error", $cf_uid);
+        wp_send_json_error(array('message'=>'Unknown error occurred'));
+    }
+});
