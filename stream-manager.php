@@ -95,7 +95,7 @@ add_action('template_redirect', function(){
     $api_url = rest_url('stream/v1/item?slug='.$slug);
     header('Content-Type: text/html; charset=utf-8');
     echo '<!doctype html><meta name="viewport" content="width=device-width, initial-scale=1" /><title>Universal Player</title>';
-    echo '<style>html,body{margin:0;background:#000;display:flex;align-items:center;justify-content:center;min-height:100vh;} .wrap{position:relative;padding-top:56.25%;max-width:1067px;width:100%;} .wrap>iframe{position:absolute;top:0;left:0;width:100%;height:100%;border:0}</style>';
+    echo '<style>html,body{margin:0;background:#000} .wrap{position:relative;padding-top:56.25%;} .wrap>iframe{position:absolute;top:0;left:0;width:100%;height:100%;border:0}</style>';
     echo '<div id="app"></div><script>const API='.wp_json_encode($api_url).';</script>';
     echo <<<HTML
 <script>

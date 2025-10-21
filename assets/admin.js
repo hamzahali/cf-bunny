@@ -1,7 +1,7 @@
 jQuery(function($){
   function embedHTML(slug){
     var src = SM_AJAX.siteurl+'/?stream_embed=1&slug='+slug;
-    return '<div style="position: relative; padding-top: 56.25%; max-width: 1067px; margin: 0 auto;"><iframe src="'+src+'" style="border: none; position: absolute; top: 0; left: 0; height: 100%; width: 100%;" allow="accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture;" allowfullscreen="true"></iframe></div>';
+    return '<div style="position: relative; padding-top: 56.25%;"><iframe src="'+src+'" style="border: none; position: absolute; top: 0; left: 0; height: 100%; width: 100%;" allow="accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture;" allowfullscreen="true"></iframe></div>';
   }
   $(document).on('click','.sm-copy-embed',function(e){
     e.preventDefault(); var slug=$(this).data('slug'); var html=embedHTML(slug);
