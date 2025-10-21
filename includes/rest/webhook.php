@@ -89,20 +89,9 @@ add_action('rest_api_init', function(){
             if (!empty($sub) && !empty($cf_live)){ $cf_iframe = 'https://'.$sub.'.cloudflarestream.com/'.$cf_live.'/iframe'; }
             elseif (!empty($sub) && !empty($cf_vid)){ $cf_iframe = 'https://'.$sub.'.cloudflarestream.com/'.$cf_vid.'/iframe'; }
 
-            $bunny_iframe = '';
-            if (!empty($lib) && !empty($bunny_guid)) {
-                // Check if video is ready before returning iframe URL
-                if (function_exists('sm_bunny_is_video_ready') && sm_bunny_is_video_ready($lib, $key, $bunny_guid)) {
-                    // Video is ready - provide iframe and set status to vod
-                    $bunny_iframe = 'https://iframe.mediadelivery.net/embed/'.$lib.'/'.$bunny_guid;
-                    $status = 'vod';
-                } elseif ($status === 'vod') {
-                    // Video exists but not ready yet. Only set to processing if original status was vod.
-                    // This prevents overriding 'live' status for active streams.
-                    $status = 'processing';
-                }
-                // If status was 'live', preserve it so CF iframe can be shown
-            }
+            $bunny_iframe = (!empty($lib) && !empty($bunny_guid)) ? ('https://iframe.mediadelivery.net/embed/'.$lib.'/'.$bunny_guid) : '';
+
+            if (!empty($bunny_guid)) $status = 'vod';
 
             return new WP_REST_Response(array('status'=>$status,'urls'=>array('cfOfficialIframe'=>$cf_iframe,'bunnyOfficialIframe'=>$bunny_iframe)),200);
         }

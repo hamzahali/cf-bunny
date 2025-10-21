@@ -106,19 +106,15 @@ add_action('template_redirect', function(){
     const j=await r.json();
     if(j && j.urls){
       var src='';
-      // Priority 1: Live streams (status='live')
       if(j.status==='live' && j.urls.cfOfficialIframe){
         src=j.urls.cfOfficialIframe;
       }
-      // Priority 2: VOD ready (status='vod')
       else if(j.status==='vod' && j.urls.bunnyOfficialIframe){
         src=j.urls.bunnyOfficialIframe;
       }
-      // Priority 3: Processing - try Cloudflare iframe as fallback
-      else if(j.status==='processing' && j.urls.cfOfficialIframe){
+      else if(j.urls.cfOfficialIframe){
         src=j.urls.cfOfficialIframe;
       }
-
       if(src){
         app.innerHTML = '<div class="wrap"><iframe src="'+src+'" allow="accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture;" allowfullscreen="true"></iframe></div>';
         return;
