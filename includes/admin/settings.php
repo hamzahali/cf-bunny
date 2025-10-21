@@ -4,6 +4,8 @@ if (!defined('ABSPATH')) exit;
 add_action('admin_init', function(){
     register_setting('sm_settings_group','sm_cf_account_id');
     register_setting('sm_settings_group','sm_cf_api_token');
+    register_setting('sm_settings_group','sm_cf_global_api_key');
+    register_setting('sm_settings_group','sm_cf_global_email');
     register_setting('sm_settings_group','sm_cf_webhook_secret');
     register_setting('sm_settings_group','sm_cf_customer_subdomain');
     register_setting('sm_settings_group','sm_cf_auto_delete');
@@ -20,6 +22,8 @@ add_action('admin_init', function(){
     }, 'sm_settings');
     sm_add_field('sm_cf_account_id','Account ID','sm_text_cb','sm_cf','');
     sm_add_field('sm_cf_api_token','API Token (Bearer)','sm_text_cb','sm_cf','');
+    sm_add_field('sm_cf_global_api_key','Global API Key (for DELETE calls only)','sm_text_cb','sm_cf','');
+    sm_add_field('sm_cf_global_email','Email (for DELETE calls only)','sm_text_cb','sm_cf','');
     sm_add_field('sm_cf_webhook_secret','Webhook Secret','sm_text_cb','sm_cf','');
     sm_add_field('sm_cf_customer_subdomain','Customer Subdomain (e.g. customer-xxxx)','sm_text_cb','sm_cf','');
     sm_add_field('sm_cf_auto_delete','Auto-Delete CF video post-transfer','sm_checkbox_cb','sm_cf','');
