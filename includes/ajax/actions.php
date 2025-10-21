@@ -78,12 +78,19 @@ add_action('wp_ajax_sm_manual_delete_cf_video', function(){
 
     $acc = get_option('sm_cf_account_id','');
     $tok = get_option('sm_cf_api_token','');
+    $global_key = get_option('sm_cf_global_api_key','');
+    $global_email = get_option('sm_cf_global_email','');
 
-    if (empty($acc) || empty($tok)) {
-        wp_send_json_error(array('message'=>'Cloudflare API credentials not configured'));
+    if (empty($acc)) {
+        wp_send_json_error(array('message'=>'Cloudflare Account ID not configured'));
     }
 
-    $res = sm_cf_delete_video($acc, $tok, $cf_uid);
+    // Require either Bearer token OR (Global API Key + Email)
+    if (empty($tok) && (empty($global_key) || empty($global_email))) {
+        wp_send_json_error(array('message'=>'Cloudflare API credentials not configured. Please configure either API Token or Global API Key + Email.'));
+    }
+
+    $res = sm_cf_delete_video($acc, $tok, $cf_uid, $global_key, $global_email);
 
     if (is_wp_error($res)) {
         $data = $res->get_error_data();

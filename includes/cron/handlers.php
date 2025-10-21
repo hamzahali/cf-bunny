@@ -8,7 +8,9 @@ add_action('sm_transfer_retry_event', function($post_id, $cf_uid, $attempt){
 add_action('sm_cf_delete_event', function($cf_uid){
     $acc = get_option('sm_cf_account_id','');
     $tok = get_option('sm_cf_api_token','');
-    $res = sm_cf_delete_video($acc, $tok, $cf_uid);
+    $global_key = get_option('sm_cf_global_api_key','');
+    $global_email = get_option('sm_cf_global_email','');
+    $res = sm_cf_delete_video($acc, $tok, $cf_uid, $global_key, $global_email);
     if (is_wp_error($res)) {
         $data = $res->get_error_data();
         $code = isset($data['code']) ? $data['code'] : 'unknown';

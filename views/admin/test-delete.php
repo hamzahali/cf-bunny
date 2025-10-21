@@ -52,6 +52,32 @@
           </td>
         </tr>
         <tr>
+          <th>Global API Key (for DELETE)</th>
+          <td>
+            <?php
+            $global_key = get_option('sm_cf_global_api_key','');
+            if ($global_key) {
+              echo '<code>' . esc_html(substr($global_key, 0, 8)) . '••••••••••••••••</code> <span style="color: green;">✓ Configured</span>';
+            } else {
+              echo '<span style="color: orange;">✗ Not configured</span>';
+            }
+            ?>
+          </td>
+        </tr>
+        <tr>
+          <th>Email (for DELETE)</th>
+          <td>
+            <?php
+            $global_email = get_option('sm_cf_global_email','');
+            if ($global_email) {
+              echo '<code>' . esc_html($global_email) . '</code> <span style="color: green;">✓ Configured</span>';
+            } else {
+              echo '<span style="color: orange;">✗ Not configured</span>';
+            }
+            ?>
+          </td>
+        </tr>
+        <tr>
           <th>Auto-delete Enabled</th>
           <td><?php echo get_option('sm_cf_auto_delete', false) ? '<span style="color: green;">✓ Yes</span>' : '<span style="color: orange;">✗ No</span>'; ?></td>
         </tr>

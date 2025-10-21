@@ -3,6 +3,8 @@ if (!defined('ABSPATH')) exit;
 
 function sm_cf_headers($token){ return array('Authorization'=>'Bearer '.$token,'Content-Type'=>'application/json'); }
 
+function sm_cf_global_headers($api_key,$email){ return array('X-Auth-Key'=>$api_key,'X-Auth-Email'=>$email,'Content-Type'=>'application/json'); }
+
 function sm_cf_create_live_input($account_id,$token,$name,$meta=array()){
     $url="https://api.cloudflare.com/client/v4/accounts/{$account_id}/stream/live_inputs";
     $body=array('name'=>$name,'meta'=>array('name'=>$name)+$meta);
@@ -41,9 +43,17 @@ function sm_cf_enable_and_wait_mp4($account_id,$token,$video_uid,$timeout_sec=30
     return !empty($mp4) ? $mp4 : new WP_Error('mp4_timeout','MP4 not ready');
 }
 
-function sm_cf_delete_video($account_id,$token,$video_uid){
-    $url="https://api.cloudflare.com/client/v4/accounts/{$account_id}/stream/videos/{$video_uid}";
-    $res=wp_remote_request($url,array('method'=>'DELETE','headers'=>sm_cf_headers($token),'timeout'=>20));
+function sm_cf_delete_video($account_id,$token,$video_uid,$global_api_key='',$global_email=''){
+    $url="https://api.cloudflare.com/client/v4/accounts/{$account_id}/stream/{$video_uid}";
+
+    // Use Global API Key + Email if provided, otherwise fall back to Bearer token
+    if (!empty($global_api_key) && !empty($global_email)) {
+        $headers = sm_cf_global_headers($global_api_key, $global_email);
+    } else {
+        $headers = sm_cf_headers($token);
+    }
+
+    $res=wp_remote_request($url,array('method'=>'DELETE','headers'=>$headers,'timeout'=>20));
     if (is_wp_error($res)) return $res;
     $code=wp_remote_retrieve_response_code($res);
     $body=wp_remote_retrieve_body($res);
