@@ -113,3 +113,25 @@ add_action('wp_ajax_sm_manual_delete_cf_video', function(){
         wp_send_json_error(array('message'=>'Unknown error occurred'));
     }
 });
+
+add_action('wp_ajax_sm_verify_cf_permissions', function(){
+    check_ajax_referer('sm_ajax_nonce','nonce'); sm_require_cap();
+
+    $account_id = isset($_POST['account_id']) ? sanitize_text_field($_POST['account_id']) : '';
+    $token = isset($_POST['token']) ? sanitize_text_field($_POST['token']) : '';
+
+    if (empty($account_id) || empty($token)) {
+        wp_send_json_error(array('message'=>'Account ID and API Token are required'));
+    }
+
+    $result = sm_cf_verify_permissions($account_id, $token);
+
+    if (!empty($result['errors']) && count($result['errors']) === 3) {
+        wp_send_json_error(array(
+            'message'=>'Failed to verify permissions',
+            'errors'=>$result['errors']
+        ));
+    }
+
+    wp_send_json_success($result);
+});

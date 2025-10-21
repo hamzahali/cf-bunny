@@ -17,6 +17,15 @@ add_action('admin_init', function(){
 
     add_settings_section('sm_cf', __('Cloudflare Stream','stream-manager'), function(){
         echo '<p>Cloudflare Stream credentials. Setup Mode bypasses signature verification during webhook testing (disable later).</p>';
+        echo '<div id="sm-cf-permissions-status" style="margin-top: 15px; padding: 12px; background: #f0f0f1; border-left: 4px solid #2271b1; display: none;">';
+        echo '<strong>API Permissions Status:</strong><br/>';
+        echo '<div style="margin-top: 8px;">';
+        echo '<span id="sm-perm-get" style="margin-right: 15px;"><span class="sm-perm-label">GET:</span> <span class="sm-perm-status">—</span></span>';
+        echo '<span id="sm-perm-patch" style="margin-right: 15px;"><span class="sm-perm-label">PATCH:</span> <span class="sm-perm-status">—</span></span>';
+        echo '<span id="sm-perm-delete"><span class="sm-perm-label">DELETE:</span> <span class="sm-perm-status">—</span></span>';
+        echo '</div>';
+        echo '<div id="sm-perm-message" style="margin-top: 8px; font-size: 12px; color: #646970;"></div>';
+        echo '</div>';
     }, 'sm_settings');
     sm_add_field('sm_cf_account_id','Account ID','sm_text_cb','sm_cf','');
     sm_add_field('sm_cf_api_token','API Token (Bearer)','sm_text_cb','sm_cf','');
@@ -62,7 +71,7 @@ add_action('admin_notices', function(){
 
 function sm_render_settings_page(){
     sm_require_cap();
-    echo '<div class="wrap"><h1>Stream Manager Settings</h1><form method="post" action="options.php">';
+    echo '<div class="wrap"><h1>Stream Manager Settings</h1><form method="post" action="options.php" id="sm-settings-form">';
     settings_fields('sm_settings_group'); do_settings_sections('sm_settings'); submit_button();
     echo '</form></div>';
 }

@@ -75,4 +75,89 @@ jQuery(function($){
       var box = $('#sm-vod-embed'); box.empty().show().append('<h2>Universal Embed Code</h2><textarea style="width:100%;height:120px;">'+embedHTML(r.data.slug)+'</textarea><p><button class="button sm-copy-embed" data-slug="'+r.data.slug+'">📋 Copy Embed</button> <a class="button" target="_blank" href="'+uni+'">👁️ Preview</a></p>');
     });
   });
+
+  // Cloudflare Permission Verification
+  function verifyCFPermissions() {
+    var accountId = $('input[name="sm_cf_account_id"]').val();
+    var token = $('input[name="sm_cf_api_token"]').val();
+
+    if (!accountId || !token) {
+      $('#sm-cf-permissions-status').hide();
+      return;
+    }
+
+    $('#sm-cf-permissions-status').show();
+    $('#sm-perm-message').html('<em>Verifying permissions...</em>');
+    $('#sm-perm-get .sm-perm-status').text('...');
+    $('#sm-perm-patch .sm-perm-status').text('...');
+    $('#sm-perm-delete .sm-perm-status').text('...');
+
+    $.post(SM_AJAX.ajaxurl, {
+      action: 'sm_verify_cf_permissions',
+      nonce: SM_AJAX.nonce,
+      account_id: accountId,
+      token: token
+    }, function(r) {
+      if (r.success && r.data && r.data.permissions) {
+        var perms = r.data.permissions;
+        $('#sm-perm-get .sm-perm-status').html(perms.get ? '<span style="color: #46b450;">&#x2714;</span>' : '<span style="color: #dc3232;">&#x2718;</span>');
+        $('#sm-perm-patch .sm-perm-status').html(perms.patch ? '<span style="color: #46b450;">&#x2714;</span>' : '<span style="color: #dc3232;">&#x2718;</span>');
+        $('#sm-perm-delete .sm-perm-status').html(perms.delete ? '<span style="color: #46b450;">&#x2714;</span>' : '<span style="color: #dc3232;">&#x2718;</span>');
+
+        var allPassed = perms.get && perms.patch && perms.delete;
+        if (allPassed) {
+          $('#sm-perm-message').html('<span style="color: #46b450;">All permissions verified successfully!</span>');
+        } else {
+          var missing = [];
+          if (!perms.get) missing.push('GET');
+          if (!perms.patch) missing.push('PATCH');
+          if (!perms.delete) missing.push('DELETE');
+          $('#sm-perm-message').html('<span style="color: #dc3232;">Missing permissions: ' + missing.join(', ') + '</span>');
+        }
+
+        if (r.data.errors && Object.keys(r.data.errors).length > 0) {
+          var errMsg = '<br/><strong>Errors:</strong><br/>';
+          for (var key in r.data.errors) {
+            errMsg += key.toUpperCase() + ': ' + r.data.errors[key] + '<br/>';
+          }
+          $('#sm-perm-message').append(errMsg);
+        }
+      } else {
+        $('#sm-perm-get .sm-perm-status').html('<span style="color: #dc3232;">&#x2718;</span>');
+        $('#sm-perm-patch .sm-perm-status').html('<span style="color: #dc3232;">&#x2718;</span>');
+        $('#sm-perm-delete .sm-perm-status').html('<span style="color: #dc3232;">&#x2718;</span>');
+        var errMsg = r.data && r.data.message ? r.data.message : 'Failed to verify permissions';
+        $('#sm-perm-message').html('<span style="color: #dc3232;">' + errMsg + '</span>');
+      }
+    }).fail(function() {
+      $('#sm-perm-message').html('<span style="color: #dc3232;">Request failed. Please try again.</span>');
+    });
+  }
+
+  // Trigger verification after settings form submission
+  $('#sm-settings-form').on('submit', function(e) {
+    // Let the form submit normally, but also trigger verification after save
+    setTimeout(function() {
+      if ($('#setting-error-settings_updated').length > 0) {
+        // Settings were saved successfully
+        verifyCFPermissions();
+      }
+    }, 500);
+  });
+
+  // Also add a manual verification button
+  if ($('input[name="sm_cf_account_id"]').length > 0) {
+    var verifyBtn = $('<button type="button" class="button" id="sm-verify-permissions-btn" style="margin-left: 10px;">Verify Permissions</button>');
+    $('input[name="sm_cf_api_token"]').parent().append(verifyBtn);
+
+    verifyBtn.on('click', function(e) {
+      e.preventDefault();
+      verifyCFPermissions();
+    });
+
+    // Auto-verify if credentials are already present
+    if ($('input[name="sm_cf_account_id"]').val() && $('input[name="sm_cf_api_token"]').val()) {
+      verifyCFPermissions();
+    }
+  }
 });

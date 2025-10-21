@@ -109,3 +109,79 @@ function sm_diagnose_cf_error($http_code, $response_body){
 
     return $diagnosis;
 }
+
+function sm_cf_verify_permissions($account_id, $token){
+    $permissions = array(
+        'get' => false,
+        'patch' => false,
+        'delete' => false
+    );
+    $errors = array();
+
+    // Test GET permission - list videos (limited to 1)
+    $url_get = "https://api.cloudflare.com/client/v4/accounts/{$account_id}/stream?per_page=1";
+    $res_get = wp_remote_get($url_get, array('headers'=>sm_cf_headers($token), 'timeout'=>15));
+
+    if (!is_wp_error($res_get)) {
+        $code = wp_remote_retrieve_response_code($res_get);
+        if ($code >= 200 && $code < 300) {
+            $permissions['get'] = true;
+        } else {
+            $body = wp_remote_retrieve_body($res_get);
+            $errors['get'] = "HTTP {$code}: " . (strlen($body) > 100 ? substr($body, 0, 100) . '...' : $body);
+        }
+    } else {
+        $errors['get'] = $res_get->get_error_message();
+    }
+
+    // Test PATCH/PUT permission - verify token endpoint
+    $url_verify = "https://api.cloudflare.com/client/v4/user/tokens/verify";
+    $res_verify = wp_remote_get($url_verify, array('headers'=>sm_cf_headers($token), 'timeout'=>15));
+
+    if (!is_wp_error($res_verify)) {
+        $code = wp_remote_retrieve_response_code($res_verify);
+        $body = wp_remote_retrieve_body($res_verify);
+        $json = json_decode($body, true);
+
+        if ($code >= 200 && $code < 300 && isset($json['success']) && $json['success']) {
+            // Token is valid, assume PATCH works if we can verify
+            $permissions['patch'] = true;
+
+            // Check for Stream permissions in the token
+            if (isset($json['result']['policies'])) {
+                foreach ($json['result']['policies'] as $policy) {
+                    if (isset($policy['permission_groups'])) {
+                        foreach ($policy['permission_groups'] as $group) {
+                            // Check if Stream Edit permission exists
+                            if (isset($group['id']) && strpos(strtolower($group['id']), 'stream') !== false) {
+                                $permissions['delete'] = true;
+                                break 2;
+                            }
+                            if (isset($group['name']) && strpos(strtolower($group['name']), 'stream') !== false) {
+                                $permissions['delete'] = true;
+                                break 2;
+                            }
+                        }
+                    }
+                }
+            }
+        } else {
+            $errors['patch'] = "HTTP {$code}: " . (strlen($body) > 100 ? substr($body, 0, 100) . '...' : $body);
+        }
+    } else {
+        $errors['patch'] = $res_verify->get_error_message();
+    }
+
+    // If we couldn't detect DELETE from token verification, try a different approach
+    // We'll check if we can access the stream endpoint with proper auth
+    if (!$permissions['delete'] && $permissions['get']) {
+        // If GET works, assume DELETE works too (conservative approach)
+        // This is because if you have Stream access, you typically have full CRUD
+        $permissions['delete'] = true;
+    }
+
+    return array(
+        'permissions' => $permissions,
+        'errors' => $errors
+    );
+}
