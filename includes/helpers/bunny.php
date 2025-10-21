@@ -35,6 +35,27 @@ function sm_bunny_upload_file($library_id,$api_key,$guid,$file_path){
     return ($code>=200 && $code<300) ? true : new WP_Error('bunny_upload_failed','Upload failed', array('status'=>$code,'response'=>$res));
 }
 
+function sm_bunny_get_video($library_id,$api_key,$guid){
+    $url = sm_bunny_base()."/library/{$library_id}/videos/{$guid}";
+    $res = wp_remote_get($url,array(
+        'headers'=>sm_bunny_headers($api_key),
+        'timeout'=>30
+    ));
+    if (is_wp_error($res)) return $res;
+    $code = wp_remote_retrieve_response_code($res);
+    if ($code >= 400) return new WP_Error('bunny_get_failed','Failed to get video info',array('status'=>$code));
+    $json = json_decode(wp_remote_retrieve_body($res),true);
+    return $json ? $json : new WP_Error('bunny_invalid_json','Invalid JSON response');
+}
+
+function sm_bunny_is_video_ready($library_id,$api_key,$guid){
+    $video = sm_bunny_get_video($library_id,$api_key,$guid);
+    if (is_wp_error($video)) return false;
+    // Video is ready if encodeProgress is 100 (or if the field doesn't exist, assume ready)
+    $progress = isset($video['encodeProgress']) ? intval($video['encodeProgress']) : 100;
+    return $progress >= 100;
+}
+
 function sm_bunny_player_urls_for_guid($library_id,$guid){
     $iframe = "https://iframe.mediadelivery.net/embed/{$library_id}/{$guid}";
     $hls = "https://vz-{$library_id}-{$guid}.video.delivery/videos/{$guid}/playlist.m3u8";

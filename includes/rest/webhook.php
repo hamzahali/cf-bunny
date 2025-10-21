@@ -82,15 +82,25 @@ add_action('rest_api_init', function(){
             $cf_vid  = get_post_meta($post->ID,'_sm_cf_video_uid',true);
             $bunny_guid = get_post_meta($post->ID,'_sm_bunny_guid',true);
             $lib = get_option('sm_bunny_library_id','');
+            $key = get_option('sm_bunny_api_key','');
             $sub = trim(get_option('sm_cf_customer_subdomain',''));
 
             $cf_iframe = '';
             if (!empty($sub) && !empty($cf_live)){ $cf_iframe = 'https://'.$sub.'.cloudflarestream.com/'.$cf_live.'/iframe'; }
             elseif (!empty($sub) && !empty($cf_vid)){ $cf_iframe = 'https://'.$sub.'.cloudflarestream.com/'.$cf_vid.'/iframe'; }
 
-            $bunny_iframe = (!empty($lib) && !empty($bunny_guid)) ? ('https://iframe.mediadelivery.net/embed/'.$lib.'/'.$bunny_guid) : '';
+            $bunny_iframe = '';
+            if (!empty($lib) && !empty($bunny_guid)) {
+                // Check if video is ready before returning iframe URL
+                if (function_exists('sm_bunny_is_video_ready') && sm_bunny_is_video_ready($lib, $key, $bunny_guid)) {
+                    $bunny_iframe = 'https://iframe.mediadelivery.net/embed/'.$lib.'/'.$bunny_guid;
+                    $status = 'vod';
+                } else {
+                    // Video is still encoding, keep status as processing
+                    $status = 'processing';
+                }
+            }
 
-            if (!empty($bunny_guid)) $status = 'vod';
             return new WP_REST_Response(array('status'=>$status,'urls'=>array('cfOfficialIframe'=>$cf_iframe,'bunnyOfficialIframe'=>$bunny_iframe)),200);
         }
     ));
