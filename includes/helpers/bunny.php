@@ -49,8 +49,13 @@ function sm_bunny_get_video($library_id,$api_key,$guid){
 }
 
 function sm_bunny_is_video_ready($library_id,$api_key,$guid){
+    // If credentials are missing, assume video is ready (fail open)
+    if (empty($library_id) || empty($api_key) || empty($guid)) return true;
+
     $video = sm_bunny_get_video($library_id,$api_key,$guid);
-    if (is_wp_error($video)) return false;
+    // If API call fails, assume video is ready to avoid blocking playback
+    if (is_wp_error($video)) return true;
+
     // Video is ready if encodeProgress is 100 (or if the field doesn't exist, assume ready)
     $progress = isset($video['encodeProgress']) ? intval($video['encodeProgress']) : 100;
     return $progress >= 100;

@@ -93,12 +93,15 @@ add_action('rest_api_init', function(){
             if (!empty($lib) && !empty($bunny_guid)) {
                 // Check if video is ready before returning iframe URL
                 if (function_exists('sm_bunny_is_video_ready') && sm_bunny_is_video_ready($lib, $key, $bunny_guid)) {
+                    // Video is ready - provide iframe and set status to vod
                     $bunny_iframe = 'https://iframe.mediadelivery.net/embed/'.$lib.'/'.$bunny_guid;
                     $status = 'vod';
-                } else {
-                    // Video is still encoding, keep status as processing
+                } elseif ($status === 'vod') {
+                    // Video exists but not ready yet. Only set to processing if original status was vod.
+                    // This prevents overriding 'live' status for active streams.
                     $status = 'processing';
                 }
+                // If status was 'live', preserve it so CF iframe can be shown
             }
 
             return new WP_REST_Response(array('status'=>$status,'urls'=>array('cfOfficialIframe'=>$cf_iframe,'bunnyOfficialIframe'=>$bunny_iframe)),200);
