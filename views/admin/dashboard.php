@@ -73,11 +73,14 @@
     if (!$q->have_posts()) { echo '<p>No streams yet.</p>'; }
     else {
         echo '<table class="widefat fixed striped"><thead><tr>';
-        echo '<th>Title</th><th>Status</th><th>CF UID</th><th>Bunny GUID</th><th>Created</th><th>Actions</th><th>Universal Embed</th>';
+        echo '<th>Title</th><th>Status</th><th>Category</th><th>Year</th><th>Batch</th><th>CF UID</th><th>Bunny GUID</th><th>Created</th><th>Universal Embed</th>';
         echo '</tr></thead><tbody>';
         while($q->have_posts()){ $q->the_post();
             $pid = get_the_ID();
             $status = get_post_meta($pid,'_sm_status',true); if (!$status) $status='-';
+            $category = get_post_meta($pid,'_sm_category',true);
+            $year = get_post_meta($pid,'_sm_year',true);
+            $batch = get_post_meta($pid,'_sm_batch',true);
             $cfv = get_post_meta($pid,'_sm_cf_video_uid',true); if (!$cfv) $cfv = get_post_meta($pid,'_sm_cf_live_input_uid',true);
             $bg  = get_post_meta($pid,'_sm_bunny_guid',true);
             $slug = get_post_field('post_name',$pid);
@@ -85,10 +88,12 @@
             echo '<tr>';
             echo '<td><strong>'.esc_html(get_the_title()).'</strong></td>';
             echo '<td>'.esc_html(strtoupper($status)).'</td>';
+            echo '<td>'.esc_html($category ? $category : '-').'</td>';
+            echo '<td>'.esc_html($year ? $year : '-').'</td>';
+            echo '<td>'.esc_html($batch ? $batch : '-').'</td>';
             echo '<td>'.esc_html($cfv ? $cfv : '-').'</td>';
             echo '<td>'.esc_html($bg ? $bg : '-').'</td>';
             echo '<td>'.esc_html(get_the_date()).'</td>';
-            echo '<td><a class="button" target="_blank" href="'.$embed.'">Preview</a></td>';
             echo '<td><button class="button sm-copy-embed" data-slug="'.esc_attr($slug).'">📋 Copy Embed</button> <button class="button sm-preview-embed" data-slug="'.esc_attr($slug).'">👁️ Preview</button></td>';
             echo '</tr>';
         }
