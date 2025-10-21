@@ -95,7 +95,7 @@ add_action('template_redirect', function(){
     $api_url = rest_url('stream/v1/item?slug='.$slug);
     header('Content-Type: text/html; charset=utf-8');
     echo '<!doctype html><meta name="viewport" content="width=device-width, initial-scale=1" /><title>Universal Player</title>';
-    echo '<style>html,body{margin:0;background:#000;display:flex;align-items:center;justify-content:center;min-height:100vh;} .wrap{position:relative;padding-top:56.25%;max-width:1067px;width:100%;} .wrap>iframe{position:absolute;top:0;left:0;width:100%;height:100%;border:0}</style>';
+    echo '<style>html,body{margin:0;background:#000} .wrap{position:relative;padding-top:56.25%;} .wrap>iframe{position:absolute;top:0;left:0;width:100%;height:100%;border:0}</style>';
     echo '<div id="app"></div><script>const API='.wp_json_encode($api_url).';</script>';
     echo <<<HTML
 <script>
@@ -106,15 +106,25 @@ add_action('template_redirect', function(){
     const j=await r.json();
     if(j && j.urls){
       var src='';
-      if(j.status==='live' && j.urls.cfOfficialIframe){ src=j.urls.cfOfficialIframe; }
-      else if(j.status==='vod' && j.urls.bunnyOfficialIframe){ src=j.urls.bunnyOfficialIframe; }
+      if(j.status==='live' && j.urls.cfOfficialIframe){
+        src=j.urls.cfOfficialIframe;
+      }
+      else if(j.status==='vod' && j.urls.bunnyOfficialIframe){
+        src=j.urls.bunnyOfficialIframe;
+      }
+      else if(j.urls.cfOfficialIframe){
+        src=j.urls.cfOfficialIframe;
+      }
       if(src){
         app.innerHTML = '<div class="wrap"><iframe src="'+src+'" allow="accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture;" allowfullscreen="true"></iframe></div>';
         return;
       }
     }
     app.innerHTML = '<div style="color:#fff;padding:24px;font:16px system-ui">Processing… Please refresh.</div>';
-  }catch(e){ app.innerHTML='<div style="color:#fff;padding:24px;font:16px system-ui">Error loading video.</div>'; }
+  }catch(e){
+    console.error('Video load error:', e);
+    app.innerHTML='<div style="color:#fff;padding:24px;font:16px system-ui">Error loading video.</div>';
+  }
 })();
 </script>
 HTML;

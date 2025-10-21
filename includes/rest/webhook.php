@@ -82,6 +82,7 @@ add_action('rest_api_init', function(){
             $cf_vid  = get_post_meta($post->ID,'_sm_cf_video_uid',true);
             $bunny_guid = get_post_meta($post->ID,'_sm_bunny_guid',true);
             $lib = get_option('sm_bunny_library_id','');
+            $key = get_option('sm_bunny_api_key','');
             $sub = trim(get_option('sm_cf_customer_subdomain',''));
 
             $cf_iframe = '';
@@ -91,6 +92,7 @@ add_action('rest_api_init', function(){
             $bunny_iframe = (!empty($lib) && !empty($bunny_guid)) ? ('https://iframe.mediadelivery.net/embed/'.$lib.'/'.$bunny_guid) : '';
 
             if (!empty($bunny_guid)) $status = 'vod';
+
             return new WP_REST_Response(array('status'=>$status,'urls'=>array('cfOfficialIframe'=>$cf_iframe,'bunnyOfficialIframe'=>$bunny_iframe)),200);
         }
     ));
