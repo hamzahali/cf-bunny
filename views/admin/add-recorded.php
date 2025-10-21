@@ -3,6 +3,9 @@
   <p>Upload or select an MP4 from the Media Library and it will be uploaded directly to Bunny Stream.</p>
   <table class="form-table">
     <tr><th>Title</th><td><input type="text" id="sm-vod-title" class="regular-text" placeholder="Video title"/></td></tr>
+    <tr><th>Category</th><td><input type="text" id="sm-vod-category" class="regular-text"/></td></tr>
+    <tr><th>Year</th><td><input type="text" id="sm-vod-year" class="regular-text"/></td></tr>
+    <tr><th>Batch</th><td><input type="text" id="sm-vod-batch" class="regular-text"/></td></tr>
     <tr><th>MP4 File</th><td>
       <button class="button" id="sm-pick-media">Choose / Upload MP4</button>
       <span id="sm-picked-name" style="margin-left:8px;"></span>

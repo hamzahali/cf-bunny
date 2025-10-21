@@ -21,6 +21,9 @@ add_action('wp_ajax_sm_create_live', function(){
     update_post_meta($post_id, '_sm_status', 'live');
     update_post_meta($post_id, '_sm_cf_live_input_uid', $live_input_id);
     update_post_meta($post_id, '_sm_cf_stream_key', $streamKey);
+    update_post_meta($post_id, '_sm_category', $meta['category']);
+    update_post_meta($post_id, '_sm_year', $meta['year']);
+    update_post_meta($post_id, '_sm_batch', $meta['batch']);
 
     $slug = get_post_field('post_name', $post_id);
     $customer = trim(get_option('sm_cf_customer_subdomain',''));
@@ -60,6 +63,9 @@ add_action('wp_ajax_sm_upload_recorded_file', function(){
     update_post_meta($post_id, '_sm_bunny_guid', $guid);
     update_post_meta($post_id, '_sm_bunny_iframe', $iframe);
     update_post_meta($post_id, '_sm_bunny_hls', $hls);
+    update_post_meta($post_id, '_sm_category', isset($_POST['category']) ? sanitize_text_field($_POST['category']) : '');
+    update_post_meta($post_id, '_sm_year', isset($_POST['year']) ? sanitize_text_field($_POST['year']) : '');
+    update_post_meta($post_id, '_sm_batch', isset($_POST['batch']) ? sanitize_text_field($_POST['batch']) : '');
 
     sm_log('INFO', $post_id, 'Direct VOD uploaded to Bunny', '', '', '', $iframe);
     wp_send_json_success(array('ok'=>true,'iframe'=>$iframe,'hls'=>$hls,'post_id'=>$post_id,'slug'=>get_post_field('post_name',$post_id)));

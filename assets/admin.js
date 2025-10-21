@@ -60,7 +60,15 @@ jQuery(function($){
     var $out = $('#sm-upload-recorded-out').text('Uploading...');
     var title = $('#sm-vod-title').val(); var id = $('#sm-picked-id').val();
     if (!id) { $out.text('Please choose/upload an MP4 first.'); return; }
-    $.post(SM_AJAX.ajaxurl, { action:'sm_upload_recorded_file', nonce:SM_AJAX.nonce, title:title, attachment_id:id }, function(r){
+    $.post(SM_AJAX.ajaxurl, {
+      action:'sm_upload_recorded_file',
+      nonce:SM_AJAX.nonce,
+      title:title,
+      attachment_id:id,
+      category: $('#sm-vod-category').val(),
+      year: $('#sm-vod-year').val(),
+      batch: $('#sm-vod-batch').val()
+    }, function(r){
       if (!r.success) return $out.text('Error: ' + (r.data && r.data.message || 'unknown'));
       $out.text('VOD created and uploaded to Bunny.');
       var uni = SM_AJAX.siteurl+'/?stream_embed=1&slug='+r.data.slug;
