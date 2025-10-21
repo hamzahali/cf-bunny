@@ -100,14 +100,21 @@ add_action('template_redirect', function(){
 <script>
 (async function(){
   const app=document.getElementById('app');
+  let pollInterval=null;
   async function draw(){
     try{
       const r=await fetch(API,{cache:'no-store'});
       const j=await r.json();
       if(j && j.urls){
         var src='';
-        if(j.status==='live' && j.urls.cfOfficialIframe){ src=j.urls.cfOfficialIframe; }
-        else if(j.status==='vod' && j.urls.bunnyOfficialIframe){ src=j.urls.bunnyOfficialIframe; }
+        if(j.status==='live' && j.urls.cfOfficialIframe){
+          src=j.urls.cfOfficialIframe;
+          if(!pollInterval){ pollInterval=setInterval(draw,20000); }
+        }
+        else if(j.status==='vod' && j.urls.bunnyOfficialIframe){
+          src=j.urls.bunnyOfficialIframe;
+          if(pollInterval){ clearInterval(pollInterval); pollInterval=null; }
+        }
         if(src){
           app.innerHTML = '<div class="wrap"><iframe src="'+src+'" allow="accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture;" allowfullscreen="true"></iframe></div>';
           return;
@@ -116,7 +123,7 @@ add_action('template_redirect', function(){
       app.innerHTML = '<div style="color:#fff;padding:24px;font:16px system-ui">Processing… Retrying.</div>';
     }catch(e){ app.innerHTML='<div style="color:#fff;padding:24px;font:16px system-ui">Loading…</div>'; }
   }
-  await draw(); setInterval(draw,20000);
+  await draw();
 })();
 </script>
 HTML;
