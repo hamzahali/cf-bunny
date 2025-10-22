@@ -72,29 +72,108 @@
     $q = new WP_Query($args);
     if (!$q->have_posts()) { echo '<p>No streams yet.</p>'; }
     else {
+        $lib = get_option('sm_bunny_library_id','');
+        $key = get_option('sm_bunny_api_key','');
+
         echo '<table class="widefat fixed striped"><thead><tr>';
-        echo '<th>Title</th><th>Status</th><th>Category</th><th>Year</th><th>Batch</th><th>CF UID</th><th>Bunny GUID</th><th>Created</th><th>Universal Embed</th>';
+        echo '<th>Title</th><th>Status</th><th>Category</th><th>Year</th><th>Batch</th><th>CF UID</th><th>GUID</th><th>Duration</th><th>Size</th><th>Created</th><th>Universal Embed</th><th>Actions</th>';
         echo '</tr></thead><tbody>';
         while($q->have_posts()){ $q->the_post();
             $pid = get_the_ID();
-            $status = get_post_meta($pid,'_sm_status',true); if (!$status) $status='-';
+            $status_raw = get_post_meta($pid,'_sm_status',true);
             $category = get_post_meta($pid,'_sm_category',true);
             $year = get_post_meta($pid,'_sm_year',true);
             $batch = get_post_meta($pid,'_sm_batch',true);
-            $cfv = get_post_meta($pid,'_sm_cf_video_uid',true); if (!$cfv) $cfv = get_post_meta($pid,'_sm_cf_live_input_uid',true);
+            $cfv = get_post_meta($pid,'_sm_cf_video_uid',true);
+            $cf_live_input = get_post_meta($pid,'_sm_cf_live_input_uid',true);
             $bg  = get_post_meta($pid,'_sm_bunny_guid',true);
+            $transfer_done = get_post_meta($pid,'_sm_transfer_done',true);
             $slug = get_post_field('post_name',$pid);
             $embed = esc_url(site_url('/?stream_embed=1&slug='.$slug));
-            echo '<tr>';
+
+            // Determine display status
+            $display_status = '-';
+            $status_color = '';
+            $show_retry = false;
+
+            if ($bg && !$cfv && !$cf_live_input) {
+                // Direct recorded upload (has bunny guid but no CF uid)
+                $display_status = 'VOD';
+                $status_color = 'color:green;';
+            } elseif ($cf_live_input && !$bg) {
+                // Live input created but no bunny guid yet
+                $display_status = 'LIVE';
+                $status_color = 'color:blue;';
+            } elseif ($cfv && $bg) {
+                // Has both CF video and Bunny guid - transfer successful
+                $display_status = 'RECORDED LIVE';
+                $status_color = 'color:green;';
+            } elseif ($cfv && !$bg && $transfer_done) {
+                // Has CF video but no bunny guid, transfer was attempted
+                $display_status = 'RECORDING FAILED';
+                $status_color = 'color:red;';
+                $show_retry = true;
+            } elseif ($status_raw === 'processing') {
+                $display_status = 'PROCESSING';
+                $status_color = 'color:orange;';
+            } elseif ($status_raw) {
+                $display_status = strtoupper($status_raw);
+            }
+
+            // Get video metadata from Bunny if available
+            $duration_text = '-';
+            $size_text = '-';
+            if ($bg && $lib && $key) {
+                $video_info = sm_bunny_get_video($lib, $key, $bg);
+                if (!is_wp_error($video_info)) {
+                    // Duration in seconds
+                    if (isset($video_info['length']) && $video_info['length'] > 0) {
+                        $seconds = intval($video_info['length']);
+                        $hours = floor($seconds / 3600);
+                        $minutes = floor(($seconds % 3600) / 60);
+                        $secs = $seconds % 60;
+                        if ($hours > 0) {
+                            $duration_text = sprintf('%dh %dm %ds', $hours, $minutes, $secs);
+                        } else {
+                            $duration_text = sprintf('%dm %ds', $minutes, $secs);
+                        }
+                    }
+                    // Size in bytes
+                    if (isset($video_info['storageSize']) && $video_info['storageSize'] > 0) {
+                        $bytes = intval($video_info['storageSize']);
+                        if ($bytes >= 1073741824) {
+                            $size_text = number_format($bytes / 1073741824, 2) . ' GB';
+                        } else {
+                            $size_text = number_format($bytes / 1048576, 2) . ' MB';
+                        }
+                    }
+                }
+            }
+
+            echo '<tr data-post-id="'.esc_attr($pid).'">';
             echo '<td><strong>'.esc_html(get_the_title()).'</strong></td>';
-            echo '<td>'.esc_html(strtoupper($status)).'</td>';
+            echo '<td style="'.esc_attr($status_color).'"><strong>'.esc_html($display_status).'</strong>';
+            if ($show_retry) {
+                echo ' <button class="button button-small sm-retry-transfer" data-post-id="'.esc_attr($pid).'" data-cf-uid="'.esc_attr($cfv).'" style="margin-left:5px;">Retry</button>';
+            }
+            echo '</td>';
             echo '<td>'.esc_html($category ? $category : '-').'</td>';
             echo '<td>'.esc_html($year ? $year : '-').'</td>';
             echo '<td>'.esc_html($batch ? $batch : '-').'</td>';
-            echo '<td>'.esc_html($cfv ? $cfv : '-').'</td>';
+            echo '<td>'.esc_html($cfv ? $cfv : ($cf_live_input ? $cf_live_input : '-')).'</td>';
             echo '<td>'.esc_html($bg ? $bg : '-').'</td>';
+            echo '<td>'.esc_html($duration_text).'</td>';
+            echo '<td>'.esc_html($size_text).'</td>';
             echo '<td>'.esc_html(get_the_date()).'</td>';
             echo '<td><button class="button sm-copy-embed" data-slug="'.esc_attr($slug).'">📋 Copy Embed</button> <button class="button sm-preview-embed" data-slug="'.esc_attr($slug).'">👁️ Preview</button></td>';
+            echo '<td>';
+            if ($cfv || $bg) {
+                echo '<button class="button button-small sm-delete-stream" data-post-id="'.esc_attr($pid).'" data-cf-uid="'.esc_attr($cfv).'" data-bunny-guid="'.esc_attr($bg).'" style="color:red;">Delete</button> ';
+            }
+            if ($cfv && $show_retry) {
+                echo '<button class="button button-small sm-retry-transfer" data-post-id="'.esc_attr($pid).'" data-cf-uid="'.esc_attr($cfv).'">Retry</button>';
+            }
+            echo '</td>';
             echo '</tr>';
         }
         wp_reset_postdata();
