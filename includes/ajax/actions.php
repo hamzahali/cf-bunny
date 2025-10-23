@@ -126,13 +126,14 @@ add_action('wp_ajax_sm_delete_stream', function(){
     $post_id = isset($_POST['post_id']) ? absint($_POST['post_id']) : 0;
     $cf_uid = isset($_POST['cf_uid']) ? sanitize_text_field($_POST['cf_uid']) : '';
     $bunny_guid = isset($_POST['bunny_guid']) ? sanitize_text_field($_POST['bunny_guid']) : '';
+    $cf_live_input = isset($_POST['cf_live_input']) ? sanitize_text_field($_POST['cf_live_input']) : '';
 
     if (!$post_id) wp_send_json_error(array('message'=>'Post ID is required'));
 
     $errors = array();
     $success_msgs = array();
 
-    // Delete from Cloudflare if CF UID exists
+    // Delete from Cloudflare if CF UID exists (recorded video)
     if (!empty($cf_uid)) {
         $acc = get_option('sm_cf_account_id','');
         $tok = get_option('sm_cf_api_token','');
@@ -146,6 +147,23 @@ add_action('wp_ajax_sm_delete_stream', function(){
         } else {
             $success_msgs[] = 'Deleted from Cloudflare';
             sm_log('INFO', $post_id, "Deleted from Cloudflare", $cf_uid);
+        }
+    }
+
+    // Delete Cloudflare live input if exists (live input that never started streaming)
+    if (!empty($cf_live_input)) {
+        $acc = get_option('sm_cf_account_id','');
+        $tok = get_option('sm_cf_api_token','');
+        $global_key = get_option('sm_cf_global_api_key','');
+        $global_email = get_option('sm_cf_global_email','');
+
+        $res = sm_cf_delete_live_input($acc, $tok, $cf_live_input, $global_key, $global_email);
+        if (is_wp_error($res)) {
+            $errors[] = 'Cloudflare Live Input: ' . $res->get_error_message();
+            sm_log('ERROR', $post_id, "Delete live input from CF failed: {$res->get_error_message()}", $cf_live_input);
+        } else {
+            $success_msgs[] = 'Deleted live input from Cloudflare';
+            sm_log('INFO', $post_id, "Deleted live input from Cloudflare", $cf_live_input);
         }
     }
 

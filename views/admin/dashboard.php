@@ -167,8 +167,8 @@
             echo '<td>'.esc_html(get_the_date()).'</td>';
             echo '<td><button class="button sm-copy-embed" data-slug="'.esc_attr($slug).'">📋 Copy Embed</button> <button class="button sm-preview-embed" data-slug="'.esc_attr($slug).'">👁️ Preview</button></td>';
             echo '<td>';
-            if ($cfv || $bg) {
-                echo '<button class="button button-small sm-delete-stream" data-post-id="'.esc_attr($pid).'" data-cf-uid="'.esc_attr($cfv).'" data-bunny-guid="'.esc_attr($bg).'" style="color:red;">Delete</button> ';
+            if ($cfv || $bg || $cf_live_input) {
+                echo '<button class="button button-small sm-delete-stream" data-post-id="'.esc_attr($pid).'" data-cf-uid="'.esc_attr($cfv).'" data-bunny-guid="'.esc_attr($bg).'" data-cf-live-input="'.esc_attr($cf_live_input).'" style="color:red;">Delete</button> ';
             }
             if ($cfv && $show_retry) {
                 echo '<button class="button button-small sm-retry-transfer" data-post-id="'.esc_attr($pid).'" data-cf-uid="'.esc_attr($cfv).'">Retry</button>';

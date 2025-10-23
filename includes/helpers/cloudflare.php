@@ -61,6 +61,24 @@ function sm_cf_delete_video($account_id,$token,$video_uid,$global_api_key='',$gl
     return new WP_Error('cf_delete_failed',"Cloudflare delete failed with HTTP {$code}",array('code'=>$code,'body'=>$body,'video_uid'=>$video_uid));
 }
 
+function sm_cf_delete_live_input($account_id,$token,$live_input_uid,$global_api_key='',$global_email=''){
+    $url="https://api.cloudflare.com/client/v4/accounts/{$account_id}/stream/live_inputs/{$live_input_uid}";
+
+    // Use Global API Key + Email if provided, otherwise fall back to Bearer token
+    if (!empty($global_api_key) && !empty($global_email)) {
+        $headers = sm_cf_global_headers($global_api_key, $global_email);
+    } else {
+        $headers = sm_cf_headers($token);
+    }
+
+    $res=wp_remote_request($url,array('method'=>'DELETE','headers'=>$headers,'timeout'=>20));
+    if (is_wp_error($res)) return $res;
+    $code=wp_remote_retrieve_response_code($res);
+    $body=wp_remote_retrieve_body($res);
+    if ($code>=200&&$code<300) return true;
+    return new WP_Error('cf_delete_live_input_failed',"Cloudflare live input delete failed with HTTP {$code}",array('code'=>$code,'body'=>$body,'live_input_uid'=>$live_input_uid));
+}
+
 function sm_diagnose_cf_error($http_code, $response_body){
     $json = json_decode($response_body, true);
     $cf_error_code = '';

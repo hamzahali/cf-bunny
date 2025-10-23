@@ -93,6 +93,7 @@ jQuery(function($){
     var postId = btn.data('post-id');
     var cfUid = btn.data('cf-uid');
     var bunnyGuid = btn.data('bunny-guid');
+    var cfLiveInput = btn.data('cf-live-input');
     var row = btn.closest('tr');
 
     if (!confirm('Are you sure you want to delete this stream from both Cloudflare and Bunny? This action cannot be undone.')) {
@@ -106,7 +107,8 @@ jQuery(function($){
       nonce: SM_AJAX.nonce,
       post_id: postId,
       cf_uid: cfUid,
-      bunny_guid: bunnyGuid
+      bunny_guid: bunnyGuid,
+      cf_live_input: cfLiveInput
     }, function(r){
       if (r.success) {
         alert('✓ ' + r.data.message);
