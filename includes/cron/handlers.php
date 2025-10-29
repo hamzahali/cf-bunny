@@ -37,7 +37,7 @@ function sm_start_transfer_to_bunny($post_id, $cf_uid, $attempt){
     $lib = get_option('sm_bunny_library_id','');
     $key = get_option('sm_bunny_api_key','');
 
-    $mp4 = sm_cf_enable_and_wait_mp4($acc, $tok, $cf_uid, 300);
+    $mp4 = sm_cf_enable_and_wait_mp4($acc, $tok, $cf_uid, 900);
     if (is_wp_error($mp4)) { sm_log('ERROR',$post_id,'MP4 not ready: '.$mp4->get_error_message(),$cf_uid); sm_schedule_transfer_retry($post_id,$cf_uid,$attempt); return; }
 
     $title = get_the_title($post_id);
