@@ -100,10 +100,6 @@
                 // Direct recorded upload (has bunny guid but no CF uid)
                 $display_status = 'VOD';
                 $status_color = 'color:green;';
-            } elseif ($cf_live_input && !$bg) {
-                // Live input created but no bunny guid yet
-                $display_status = 'LIVE';
-                $status_color = 'color:blue;';
             } elseif ($cfv && $bg) {
                 // Has both CF video and Bunny guid - transfer successful
                 $display_status = 'RECORDED LIVE';
@@ -127,6 +123,10 @@
                 $display_status = 'TRANSFER NOT STARTED';
                 $status_color = 'color:red;';
                 $show_retry = true;
+            } elseif ($cf_live_input && !$bg && !$cfv) {
+                // Live input created but video not recorded yet (actively live)
+                $display_status = 'LIVE';
+                $status_color = 'color:blue;';
             } elseif ($status_raw === 'processing') {
                 $display_status = 'PROCESSING';
                 $status_color = 'color:orange;';
