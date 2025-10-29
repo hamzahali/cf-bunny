@@ -94,7 +94,6 @@
             // Determine display status
             $display_status = '-';
             $status_color = '';
-            $show_retry = false;
 
             if ($bg && !$cfv && !$cf_live_input) {
                 // Direct recorded upload (has bunny guid but no CF uid)
@@ -112,7 +111,6 @@
                 // Has CF video but no bunny guid, transfer was attempted
                 $display_status = 'RECORDING FAILED';
                 $status_color = 'color:red;';
-                $show_retry = true;
             } elseif ($status_raw === 'processing') {
                 $display_status = 'PROCESSING';
                 $status_color = 'color:orange;';
@@ -152,11 +150,7 @@
 
             echo '<tr data-post-id="'.esc_attr($pid).'">';
             echo '<td><strong>'.esc_html(get_the_title()).'</strong></td>';
-            echo '<td style="'.esc_attr($status_color).'"><strong>'.esc_html($display_status).'</strong>';
-            if ($show_retry) {
-                echo ' <button class="button button-small sm-retry-transfer" data-post-id="'.esc_attr($pid).'" data-cf-uid="'.esc_attr($cfv).'" style="margin-left:5px;">Retry</button>';
-            }
-            echo '</td>';
+            echo '<td style="'.esc_attr($status_color).'"><strong>'.esc_html($display_status).'</strong></td>';
             echo '<td>'.esc_html($category ? $category : '-').'</td>';
             echo '<td>'.esc_html($year ? $year : '-').'</td>';
             echo '<td>'.esc_html($batch ? $batch : '-').'</td>';
@@ -170,7 +164,7 @@
             if ($cfv || $bg) {
                 echo '<button class="button button-small sm-delete-stream" data-post-id="'.esc_attr($pid).'" data-cf-uid="'.esc_attr($cfv).'" data-bunny-guid="'.esc_attr($bg).'" style="color:red;">Delete</button> ';
             }
-            if ($cfv && $show_retry) {
+            if ($cfv) {
                 echo '<button class="button button-small sm-retry-transfer" data-post-id="'.esc_attr($pid).'" data-cf-uid="'.esc_attr($cfv).'">Retry</button>';
             }
             echo '</td>';
