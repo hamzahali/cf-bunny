@@ -190,11 +190,27 @@ add_action('wp_ajax_sm_retry_transfer', function(){
 
     if (!$post_id || !$cf_uid) wp_send_json_error(array('message'=>'Post ID and CF UID are required'));
 
+    // Check if video exists in Cloudflare
+    $acc = get_option('sm_cf_account_id','');
+    $tok = get_option('sm_cf_api_token','');
+
+    if (empty($acc) || empty($tok)) {
+        wp_send_json_error(array('message'=>'Cloudflare credentials not configured'));
+    }
+
+    $video_check = sm_cf_check_video_exists($acc, $tok, $cf_uid);
+
+    if (is_wp_error($video_check)) {
+        $error_msg = $video_check->get_error_message();
+        sm_log('ERROR', $post_id, "Retry failed: {$error_msg}", $cf_uid);
+        wp_send_json_error(array('message'=>"Cannot retry transfer: {$error_msg}"));
+    }
+
     // Reset transfer status
     delete_post_meta($post_id, '_sm_transfer_done');
     update_post_meta($post_id, '_sm_status', 'processing');
 
-    sm_log('INFO', $post_id, "Manual retry transfer initiated", $cf_uid);
+    sm_log('INFO', $post_id, "Manual retry transfer initiated (video exists in CF)", $cf_uid);
 
     // Start transfer with attempt 0
     if (function_exists('sm_start_transfer_to_bunny')) {

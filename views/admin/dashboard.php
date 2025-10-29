@@ -94,7 +94,6 @@
             // Determine display status
             $display_status = '-';
             $status_color = '';
-            $show_retry = false;
 
             if ($bg && !$cfv && !$cf_live_input) {
                 // Direct recorded upload (has bunny guid but no CF uid)
@@ -112,7 +111,6 @@
                 // Has CF video but no bunny guid, transfer was attempted
                 $display_status = 'RECORDING FAILED';
                 $status_color = 'color:red;';
-                $show_retry = true;
             } elseif ($status_raw === 'processing') {
                 $display_status = 'PROCESSING';
                 $status_color = 'color:orange;';
@@ -152,11 +150,7 @@
 
             echo '<tr data-post-id="'.esc_attr($pid).'">';
             echo '<td><strong>'.esc_html(get_the_title()).'</strong></td>';
-            echo '<td style="'.esc_attr($status_color).'"><strong>'.esc_html($display_status).'</strong>';
-            if ($show_retry) {
-                echo ' <button class="button button-small sm-retry-transfer" data-post-id="'.esc_attr($pid).'" data-cf-uid="'.esc_attr($cfv).'" style="margin-left:5px;">Retry</button>';
-            }
-            echo '</td>';
+            echo '<td style="'.esc_attr($status_color).'"><strong>'.esc_html($display_status).'</strong></td>';
             echo '<td>'.esc_html($category ? $category : '-').'</td>';
             echo '<td>'.esc_html($year ? $year : '-').'</td>';
             echo '<td>'.esc_html($batch ? $batch : '-').'</td>';
@@ -170,7 +164,7 @@
             if ($cfv || $bg) {
                 echo '<button class="button button-small sm-delete-stream" data-post-id="'.esc_attr($pid).'" data-cf-uid="'.esc_attr($cfv).'" data-bunny-guid="'.esc_attr($bg).'" style="color:red;">Delete</button> ';
             }
-            if ($cfv && $show_retry) {
+            if ($cfv) {
                 echo '<button class="button button-small sm-retry-transfer" data-post-id="'.esc_attr($pid).'" data-cf-uid="'.esc_attr($cfv).'">Retry</button>';
             }
             echo '</td>';
@@ -186,3 +180,110 @@
     <a class="button" href="<?php echo admin_url('admin.php?page=sm_logs'); ?>">Transfer Logs</a>
   </p>
 </div>
+
+<style>
+  .sm-retry-transfer {
+    font-size: 11px;
+    height: 22px;
+    line-height: 20px;
+    padding: 0 6px;
+    vertical-align: middle;
+  }
+</style>
+
+<script>
+jQuery(document).ready(function($){
+  $('.sm-retry-transfer').on('click', function(e){
+    e.preventDefault();
+    var btn = $(this);
+    var cfUid = btn.data('cf-uid');
+    var postId = btn.data('post-id');
+
+    if (!confirm('Retry transfer for video ' + cfUid + '?\n\nThis will check if the video exists in Cloudflare and restart the transfer to Bunny.')) {
+      return;
+    }
+
+    btn.prop('disabled', true).text('Checking...');
+
+    $.ajax({
+      url: ajaxurl,
+      type: 'POST',
+      data: {
+        action: 'sm_retry_transfer',
+        nonce: '<?php echo wp_create_nonce('sm_ajax_nonce'); ?>',
+        cf_uid: cfUid,
+        post_id: postId
+      },
+      success: function(response){
+        if (response.success) {
+          alert('✓ Transfer retry initiated!\n\n' + response.data.message + '\n\nThe page will reload to show updated status.');
+          setTimeout(function(){ location.reload(); }, 1500);
+        } else {
+          alert('✗ Retry failed:\n\n' + response.data.message);
+          btn.prop('disabled', false).text('Retry');
+        }
+      },
+      error: function(xhr, status, error){
+        alert('✗ Request failed: ' + error);
+        btn.prop('disabled', false).text('Retry');
+      }
+    });
+  });
+
+  $('.sm-copy-embed').on('click', function(){
+    var slug = $(this).data('slug');
+    var embed = '<?php echo site_url(); ?>/?stream_embed=1&slug=' + slug;
+    navigator.clipboard.writeText(embed).then(function(){
+      alert('Embed URL copied to clipboard!');
+    });
+  });
+
+  $('.sm-preview-embed').on('click', function(){
+    var slug = $(this).data('slug');
+    var embed = '<?php echo site_url(); ?>/?stream_embed=1&slug=' + slug;
+    window.open(embed, '_blank');
+  });
+
+  $('.sm-delete-stream').on('click', function(){
+    var btn = $(this);
+    var postId = btn.data('post-id');
+    var cfUid = btn.data('cf-uid');
+    var bunnyGuid = btn.data('bunny-guid');
+
+    if (!confirm('Delete this stream?\n\nThis will delete:\n- WordPress post\n- Cloudflare video (if exists)\n- Bunny video (if exists)')) {
+      return;
+    }
+
+    btn.prop('disabled', true).text('Deleting...');
+
+    $.ajax({
+      url: ajaxurl,
+      type: 'POST',
+      data: {
+        action: 'sm_delete_stream',
+        nonce: '<?php echo wp_create_nonce('sm_ajax_nonce'); ?>',
+        post_id: postId,
+        cf_uid: cfUid,
+        bunny_guid: bunnyGuid
+      },
+      success: function(response){
+        if (response.success) {
+          alert('✓ Stream deleted: ' + response.data.message);
+          location.reload();
+        } else {
+          var msg = response.data.message;
+          if (response.data.partial_success) {
+            msg += '\n\nPartially succeeded: ' + response.data.partial_success.join(', ');
+          }
+          alert('✗ Delete failed: ' + msg);
+          btn.prop('disabled', false).text('Delete');
+        }
+      },
+      error: function(xhr, status, error){
+        alert('✗ Request failed: ' + error);
+        btn.prop('disabled', false).text('Delete');
+      }
+    });
+  });
+});
+</script>
