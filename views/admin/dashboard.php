@@ -96,6 +96,10 @@
             $status_color = '';
             $show_retry = false;
 
+            // DEBUG: Temporarily log values for troubleshooting
+            // Uncomment to see what values are being checked:
+            // error_log("Post {$pid}: cfv={$cfv}, bg={$bg}, cf_live_input={$cf_live_input}, transfer_done={$transfer_done}");
+
             if ($bg && !$cfv && !$cf_live_input) {
                 // Direct recorded upload (has bunny guid but no CF uid)
                 $display_status = 'VOD';
@@ -104,8 +108,8 @@
                 // Has both CF video and Bunny guid - transfer successful
                 $display_status = 'RECORDED LIVE';
                 $status_color = 'color:green;';
-            } elseif ($cfv && !$bg && $transfer_done) {
-                // Has CF video but no bunny guid, transfer was attempted
+            } elseif (($cfv || $cf_live_input) && !$bg && $transfer_done) {
+                // Has CF video/live input but no bunny guid, transfer was attempted
                 // Check if transfer is genuinely stuck (more than 15 minutes)
                 $transfer_time = strtotime($transfer_done);
                 $time_elapsed = time() - $transfer_time;
@@ -118,8 +122,8 @@
                     $display_status = 'PROCESSING';
                     $status_color = 'color:orange;';
                 }
-            } elseif ($cfv && !$bg && !$transfer_done) {
-                // Has CF video but no transfer attempted yet - webhook may have failed
+            } elseif (($cfv || $cf_live_input) && !$bg && !$transfer_done) {
+                // Has CF video/live input but no transfer attempted yet - webhook may have failed
                 $display_status = 'TRANSFER NOT STARTED';
                 $status_color = 'color:red;';
                 $show_retry = true;
@@ -177,8 +181,9 @@
             echo '<td>'.esc_html(get_the_date()).'</td>';
             echo '<td><button class="button sm-copy-embed" data-slug="'.esc_attr($slug).'">📋 Copy Embed</button> <button class="button sm-preview-embed" data-slug="'.esc_attr($slug).'">👁️ Preview</button></td>';
             echo '<td>';
-            if ($cfv && $show_retry) {
-                echo '<button class="button button-primary sm-retry-transfer" data-post-id="'.esc_attr($pid).'" data-cf-uid="'.esc_attr($cfv).'">🔄 Retry Transfer</button>';
+            if ($show_retry && ($cfv || $cf_live_input)) {
+                $retry_uid = $cfv ? $cfv : $cf_live_input;
+                echo '<button class="button button-primary sm-retry-transfer" data-post-id="'.esc_attr($pid).'" data-cf-uid="'.esc_attr($retry_uid).'">🔄 Retry Transfer</button>';
             } else {
                 echo '-';
             }
