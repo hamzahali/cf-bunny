@@ -98,71 +98,136 @@
             $status_color = '';
             $show_retry = false;
 
-            // DEBUG: Temporarily log values for troubleshooting
-            // Uncomment to see what values are being checked:
-            // error_log("Post {$pid}: cfv={$cfv}, bg={$bg}, cf_live_input={$cf_live_input}, transfer_done={$transfer_done}");
-
+            // COMPLETED VIDEOS (Has Bunny GUID)
             if ($bg && !$cfv && !$cf_live_input) {
                 // Direct recorded upload (has bunny guid but no CF uid)
-                $display_status = 'VOD';
+                $display_status = '✅ VOD';
                 $status_color = 'color:green;';
-            } elseif ($cfv && $bg) {
-                // Has both CF video and Bunny guid - transfer successful
-                $display_status = 'RECORDED LIVE';
+            } elseif ($bg) {
+                // Has Bunny guid - transfer successful (with or without CF)
+                $display_status = '✅ COMPLETED';
                 $status_color = 'color:green;';
-            } elseif (($cfv || $cf_live_input) && !$bg && $transfer_done) {
-                // Has CF video/live input but no bunny guid, transfer was attempted
-                // Check if transfer is genuinely stuck (more than 15 minutes)
-                $transfer_time = strtotime($transfer_done);
-                $time_elapsed = time() - $transfer_time;
-
-                if ($time_elapsed > 900) { // 15 minutes
-                    $display_status = 'TRANSFER STUCK';
-                    $status_color = 'color:red;font-weight:bold;';
-                    $show_retry = true;
-                } else {
-                    $display_status = 'PROCESSING';
-                    $status_color = 'color:orange;';
-                }
-            } elseif (($cfv || $cf_live_input) && !$bg && !$transfer_done) {
-                // Has CF video/live input but no transfer attempted yet - webhook may have failed
-                $display_status = 'TRANSFER NOT STARTED';
-                $status_color = 'color:red;';
-                $show_retry = true;
-            } elseif ($cf_live_input && !$bg && !$cfv) {
-                // Live input created but video not recorded yet (actively live)
-                $display_status = 'LIVE';
-                $status_color = 'color:blue;';
-            } elseif ($status_raw === 'processing') {
-                // Check if processing has been stuck for too long (post created > 15 mins ago)
-                $post_time = strtotime(get_the_date('Y-m-d H:i:s'));
-                $time_since_creation = time() - $post_time;
-
-                if ($time_since_creation > 900 && ($cfv || $cf_live_input) && !$bg) {
-                    // Stuck processing for > 15 mins with CF UID but no Bunny GUID
-                    $display_status = 'TRANSFER STUCK';
-                    $status_color = 'color:red;font-weight:bold;';
-                    $show_retry = true;
-                } else {
-                    $display_status = 'PROCESSING';
-                    $status_color = 'color:orange;';
-                }
-            } elseif ($status_raw) {
-                $display_status = strtoupper($status_raw);
             }
 
-            // Check if Cloudflare video actually exists before showing retry button
-            if ($show_retry && ($cfv || $cf_live_input) && !empty($cf_acc) && !empty($cf_tok)) {
-                $check_uid = $cfv ? $cfv : $cf_live_input;
-                $cf_exists = sm_cf_video_exists($cf_acc, $cf_tok, $check_uid);
-                if (!$cf_exists) {
-                    // CF video doesn't exist - can't retry transfer
-                    $show_retry = false;
-                    if ($display_status === 'TRANSFER STUCK' || $display_status === 'TRANSFER NOT STARTED') {
-                        $display_status = 'CF VIDEO DELETED';
-                        $status_color = 'color:gray;';
+            // LIVE INPUT VIDEOS (Check CF Live Input API for detailed status)
+            elseif ($cf_live_input && !$bg && !empty($cf_acc) && !empty($cf_tok)) {
+                // Get live input status from CF API (with caching)
+                $cache_key = 'sm_live_input_' . $cf_live_input;
+                $live_info = get_transient($cache_key);
+
+                if ($live_info === false) {
+                    $live_info = sm_cf_get_live_input($cf_acc, $cf_tok, $cf_live_input);
+                    if (!is_wp_error($live_info)) {
+                        set_transient($cache_key, $live_info, 30); // Cache for 30 seconds
                     }
                 }
+
+                if (!is_wp_error($live_info) && isset($live_info['result'])) {
+                    $result = $live_info['result'];
+
+                    // Extract status fields (handle different API response structures)
+                    $state = isset($result['status']['state']) ? $result['status']['state'] : '';
+                    $connected = isset($result['status']['current']['connected']) ? $result['status']['current']['connected'] :
+                                (isset($result['status']['connected']) ? $result['status']['connected'] : false);
+
+                    // Check for recorded video availability
+                    $has_video_uid = !empty($cfv);
+
+                    // Determine status based on live input state
+                    if ($state === 'live-inprogress' && $connected) {
+                        $display_status = '🔴 LIVE NOW';
+                        $status_color = 'color:blue;font-weight:bold;';
+                    } elseif ($state === 'live-inprogress' && !$connected) {
+                        $display_status = '⏸️ LIVE PAUSED';
+                        $status_color = 'color:orange;';
+                    } elseif ($has_video_uid) {
+                        // Has recorded video UID - check if CF video exists
+                        $cf_video_exists = sm_cf_video_exists($cf_acc, $cf_tok, $cfv);
+
+                        if ($cf_video_exists) {
+                            // Recording exists on CF, check transfer status
+                            if ($transfer_done) {
+                                $transfer_time = strtotime($transfer_done);
+                                $time_elapsed = time() - $transfer_time;
+
+                                if ($time_elapsed > 900) { // 15 minutes
+                                    $display_status = '🔥 TRANSFER STUCK';
+                                    $status_color = 'color:red;font-weight:bold;';
+                                    $show_retry = true;
+                                } else {
+                                    $display_status = '⏳ TRANSFERRING';
+                                    $status_color = 'color:orange;';
+                                }
+                            } else {
+                                // Recording ready but transfer not started
+                                $display_status = '✅ READY TO TRANSFER';
+                                $status_color = 'color:#d4af37;font-weight:bold;'; // Gold
+                                $show_retry = true;
+                            }
+                        } else {
+                            // CF video doesn't exist
+                            $display_status = '🗑️ CF VIDEO DELETED';
+                            $status_color = 'color:gray;';
+                        }
+                    } else {
+                        // Stream ended but no video UID yet - check how long ago
+                        $modified = isset($result['modified']) ? strtotime($result['modified']) : time();
+                        $time_since_end = time() - $modified;
+
+                        if ($time_since_end < 1800) { // 30 minutes
+                            $display_status = '⏳ RECORDING PROCESSING';
+                            $status_color = 'color:orange;';
+                        } else {
+                            $display_status = '❌ NO RECORDING';
+                            $status_color = 'color:gray;';
+                        }
+                    }
+                } else {
+                    // API call failed, fall back to basic status
+                    if ($cfv) {
+                        $display_status = 'LIVE (Recorded)';
+                        $status_color = 'color:orange;';
+                    } else {
+                        $display_status = 'LIVE';
+                        $status_color = 'color:blue;';
+                    }
+                }
+            }
+
+            // REGULAR CF VIDEOS (Direct video UID, not from live input)
+            elseif ($cfv && !$bg && !empty($cf_acc) && !empty($cf_tok)) {
+                $cf_video_exists = sm_cf_video_exists($cf_acc, $cf_tok, $cfv);
+
+                if ($cf_video_exists) {
+                    if ($transfer_done) {
+                        $transfer_time = strtotime($transfer_done);
+                        $time_elapsed = time() - $transfer_time;
+
+                        if ($time_elapsed > 900) { // 15 minutes
+                            $display_status = '🔥 TRANSFER STUCK';
+                            $status_color = 'color:red;font-weight:bold;';
+                            $show_retry = true;
+                        } else {
+                            $display_status = '⏳ PROCESSING';
+                            $status_color = 'color:orange;';
+                        }
+                    } else {
+                        $display_status = '⚠️ TRANSFER NOT STARTED';
+                        $status_color = 'color:red;';
+                        $show_retry = true;
+                    }
+                } else {
+                    $display_status = '🗑️ CF VIDEO DELETED';
+                    $status_color = 'color:gray;';
+                }
+            }
+
+            // FALLBACK for edge cases
+            elseif ($status_raw === 'processing') {
+                $display_status = '⏳ PROCESSING';
+                $status_color = 'color:orange;';
+            } elseif ($status_raw) {
+                $display_status = strtoupper($status_raw);
             }
 
             // Get video metadata from Bunny if available

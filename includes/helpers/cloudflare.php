@@ -25,6 +25,17 @@ function sm_cf_update_live_input($account_id,$token,$live_input_id,$args=array()
     return json_decode(wp_remote_retrieve_body($res),true);
 }
 
+function sm_cf_get_live_input($account_id,$token,$live_input_uid){
+    $url="https://api.cloudflare.com/client/v4/accounts/{$account_id}/stream/live_inputs/{$live_input_uid}";
+    $res=wp_remote_get($url,array('headers'=>sm_cf_headers($token),'timeout'=>10));
+    if (is_wp_error($res)) return $res;
+    $code=wp_remote_retrieve_response_code($res);
+    if ($code>=200 && $code<300) {
+        return json_decode(wp_remote_retrieve_body($res),true);
+    }
+    return new WP_Error('cf_api_failed',"Cloudflare API returned HTTP {$code}",array('code'=>$code));
+}
+
 function sm_cf_enable_and_wait_mp4($account_id,$token,$video_uid,$timeout_sec=300){
     $base="https://api.cloudflare.com/client/v4/accounts/{$account_id}/stream/{$video_uid}";
     $enable=wp_remote_post($base.'/downloads',array('headers'=>array('Authorization'=>'Bearer '.$token),'timeout'=>20));
