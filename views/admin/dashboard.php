@@ -150,11 +150,16 @@
                                 $transfer_time = strtotime($transfer_done);
                                 $time_elapsed = time() - $transfer_time;
 
-                                if ($time_elapsed > 900) { // 15 minutes
+                                if ($time_elapsed > 900) { // 15 minutes - definitely stuck
                                     $display_status = '🔥 TRANSFER STUCK';
                                     $status_color = 'color:red;font-weight:bold;';
                                     $show_retry = true;
+                                } elseif ($time_elapsed > 180) { // 3 minutes - likely failed, show retry
+                                    $display_status = '✅ READY TO TRANSFER';
+                                    $status_color = 'color:#d4af37;font-weight:bold;'; // Gold
+                                    $show_retry = true;
                                 } else {
+                                    // < 3 minutes - give it time to actually transfer
                                     $display_status = '⏳ TRANSFERRING';
                                     $status_color = 'color:orange;';
                                 }
@@ -203,11 +208,16 @@
                         $transfer_time = strtotime($transfer_done);
                         $time_elapsed = time() - $transfer_time;
 
-                        if ($time_elapsed > 900) { // 15 minutes
+                        if ($time_elapsed > 900) { // 15 minutes - definitely stuck
                             $display_status = '🔥 TRANSFER STUCK';
                             $status_color = 'color:red;font-weight:bold;';
                             $show_retry = true;
+                        } elseif ($time_elapsed > 180) { // 3 minutes - likely failed, show retry
+                            $display_status = '⚠️ TRANSFER NOT STARTED';
+                            $status_color = 'color:red;';
+                            $show_retry = true;
                         } else {
+                            // < 3 minutes - give it time to actually transfer
                             $display_status = '⏳ PROCESSING';
                             $status_color = 'color:orange;';
                         }
