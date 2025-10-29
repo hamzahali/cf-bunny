@@ -24,8 +24,9 @@ add_action('sm_cf_delete_event', function($cf_uid){
 }, 10, 1);
 
 function sm_schedule_transfer_retry($post_id, $cf_uid, $attempt){
-    $delays = array(2,5,10);
-    if ($attempt >= count($delays)) { sm_log('ERROR',$post_id,'Transfer failed after retries',$cf_uid); return; }
+    // Increased retry delays for long videos (60+ minutes): 2, 5, 10, 15, 20, 30 minutes
+    $delays = array(2,5,10,15,20,30);
+    if ($attempt >= count($delays)) { sm_log('ERROR',$post_id,'Transfer failed after all retries',$cf_uid); return; }
     $when = time() + ($delays[$attempt] * 60);
     wp_schedule_single_event($when, 'sm_transfer_retry_event', array($post_id, $cf_uid, $attempt+1));
     sm_log('INFO',$post_id,"Retry #{$attempt} scheduled in {$delays[$attempt]} min",$cf_uid);
@@ -52,7 +53,8 @@ function sm_start_transfer_to_bunny($post_id, $cf_uid, $attempt){
 
     sm_log('INFO',$post_id,"Starting transfer attempt #".($attempt+1)." to Bunny",$cf_uid);
 
-    $mp4 = sm_cf_enable_and_wait_mp4($acc, $tok, $cf_uid, 300);
+    // Wait up to 10 minutes for MP4 to be ready (increased for long videos)
+    $mp4 = sm_cf_enable_and_wait_mp4($acc, $tok, $cf_uid, 600);
     if (is_wp_error($mp4)) { sm_log('ERROR',$post_id,'MP4 not ready: '.$mp4->get_error_message(),$cf_uid); sm_schedule_transfer_retry($post_id,$cf_uid,$attempt); return; }
 
     $title = get_the_title($post_id);
