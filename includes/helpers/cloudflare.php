@@ -61,6 +61,17 @@ function sm_cf_delete_video($account_id,$token,$video_uid,$global_api_key='',$gl
     return new WP_Error('cf_delete_failed',"Cloudflare delete failed with HTTP {$code}",array('code'=>$code,'body'=>$body,'video_uid'=>$video_uid));
 }
 
+function sm_cf_check_video_exists($account_id,$token,$video_uid){
+    $url="https://api.cloudflare.com/client/v4/accounts/{$account_id}/stream/{$video_uid}";
+    $res=wp_remote_get($url,array('headers'=>sm_cf_headers($token),'timeout'=>20));
+    if (is_wp_error($res)) return $res;
+    $code=wp_remote_retrieve_response_code($res);
+    if ($code===404) return new WP_Error('video_not_found','Video not found in Cloudflare');
+    if ($code<200||$code>=300) return new WP_Error('cf_check_failed','Failed to check video status in Cloudflare',array('code'=>$code));
+    $json=json_decode(wp_remote_retrieve_body($res),true);
+    return isset($json['result']) ? $json['result'] : new WP_Error('invalid_response','Invalid response from Cloudflare');
+}
+
 function sm_diagnose_cf_error($http_code, $response_body){
     $json = json_decode($response_body, true);
     $cf_error_code = '';
