@@ -11,14 +11,7 @@
             $post_link = $r->post_id ? ('<a href="'.admin_url('post.php?post='.$r->post_id.'&action=edit').'" target="_blank">'.esc_html(get_the_title($r->post_id)).'</a>') : '-';
             $cfi = $r->cf_iframe ? '<a href="'.esc_url($r->cf_iframe).'" target="_blank">Open</a>' : '-';
             $bfi = $r->bunny_iframe ? '<a href="'.esc_url($r->bunny_iframe).'" target="_blank">Open</a>' : '-';
-            $actions = '';
-            if ($r->cf_uid && $r->post_id) {
-                $actions .= '<button class="button button-small sm-retry-transfer" data-cf-uid="'.esc_attr($r->cf_uid).'" data-post-id="'.esc_attr($r->post_id).'"><span class="dashicons dashicons-update" style="font-size: 13px; width: 13px; height: 13px; margin-top: 3px;"></span> Retry</button> ';
-            }
-            if ($r->cf_uid) {
-                $actions .= '<button class="button button-small sm-delete-video" data-cf-uid="'.esc_attr($r->cf_uid).'"><span class="dashicons dashicons-trash" style="font-size: 13px; width: 13px; height: 13px; margin-top: 3px;"></span> Delete</button>';
-            }
-            if (empty($actions)) $actions = '-';
+            $delete_btn = $r->cf_uid ? '<button class="button button-small sm-delete-video" data-cf-uid="'.esc_attr($r->cf_uid).'"><span class="dashicons dashicons-trash" style="font-size: 13px; width: 13px; height: 13px; margin-top: 3px;"></span> Delete</button>' : '-';
             printf('<tr data-log-id="%d"><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>',
                 $r->id,
                 esc_html($r->created_at),
@@ -28,7 +21,7 @@
                 esc_html($r->message),
                 $cfi,
                 $bfi,
-                $actions
+                $delete_btn
             );
         }
         echo '</tbody></table>';
@@ -37,60 +30,19 @@
 </div>
 
 <style>
-  .sm-delete-video, .sm-retry-transfer {
+  .sm-delete-video {
     font-size: 12px;
     height: 24px;
     line-height: 22px;
     padding: 0 8px;
   }
-  .sm-delete-video .dashicons, .sm-retry-transfer .dashicons {
+  .sm-delete-video .dashicons {
     vertical-align: middle;
-  }
-  .sm-retry-transfer {
-    margin-right: 5px;
   }
 </style>
 
 <script>
 jQuery(document).ready(function($){
-  $('.sm-retry-transfer').on('click', function(e){
-    e.preventDefault();
-    var btn = $(this);
-    var cfUid = btn.data('cf-uid');
-    var postId = btn.data('post-id');
-
-    if (!confirm('Retry transfer for video ' + cfUid + '?\n\nThis will check if the video exists in Cloudflare and restart the transfer to Bunny.')) {
-      return;
-    }
-
-    btn.prop('disabled', true).text('Retrying...');
-
-    $.ajax({
-      url: ajaxurl,
-      type: 'POST',
-      data: {
-        action: 'sm_retry_transfer',
-        nonce: '<?php echo wp_create_nonce('sm_ajax_nonce'); ?>',
-        cf_uid: cfUid,
-        post_id: postId
-      },
-      success: function(response){
-        if (response.success) {
-          alert('✓ Transfer retry initiated: ' + response.data.message);
-          btn.text('Retrying').css('color', 'green');
-          setTimeout(function(){ location.reload(); }, 1500);
-        } else {
-          alert('✗ Retry failed: ' + response.data.message);
-          btn.prop('disabled', false).html('<span class="dashicons dashicons-update" style="font-size: 13px; width: 13px; height: 13px; margin-top: 3px;"></span> Retry');
-        }
-      },
-      error: function(xhr, status, error){
-        alert('✗ Request failed: ' + error);
-        btn.prop('disabled', false).html('<span class="dashicons dashicons-update" style="font-size: 13px; width: 13px; height: 13px; margin-top: 3px;"></span> Retry');
-      }
-    });
-  });
-
   $('.sm-delete-video').on('click', function(e){
     e.preventDefault();
     var btn = $(this);

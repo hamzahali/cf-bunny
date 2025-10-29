@@ -186,3 +186,110 @@
     <a class="button" href="<?php echo admin_url('admin.php?page=sm_logs'); ?>">Transfer Logs</a>
   </p>
 </div>
+
+<style>
+  .sm-retry-transfer {
+    font-size: 11px;
+    height: 22px;
+    line-height: 20px;
+    padding: 0 6px;
+    vertical-align: middle;
+  }
+</style>
+
+<script>
+jQuery(document).ready(function($){
+  $('.sm-retry-transfer').on('click', function(e){
+    e.preventDefault();
+    var btn = $(this);
+    var cfUid = btn.data('cf-uid');
+    var postId = btn.data('post-id');
+
+    if (!confirm('Retry transfer for video ' + cfUid + '?\n\nThis will check if the video exists in Cloudflare and restart the transfer to Bunny.')) {
+      return;
+    }
+
+    btn.prop('disabled', true).text('Checking...');
+
+    $.ajax({
+      url: ajaxurl,
+      type: 'POST',
+      data: {
+        action: 'sm_retry_transfer',
+        nonce: '<?php echo wp_create_nonce('sm_ajax_nonce'); ?>',
+        cf_uid: cfUid,
+        post_id: postId
+      },
+      success: function(response){
+        if (response.success) {
+          alert('✓ Transfer retry initiated!\n\n' + response.data.message + '\n\nThe page will reload to show updated status.');
+          setTimeout(function(){ location.reload(); }, 1500);
+        } else {
+          alert('✗ Retry failed:\n\n' + response.data.message);
+          btn.prop('disabled', false).text('Retry');
+        }
+      },
+      error: function(xhr, status, error){
+        alert('✗ Request failed: ' + error);
+        btn.prop('disabled', false).text('Retry');
+      }
+    });
+  });
+
+  $('.sm-copy-embed').on('click', function(){
+    var slug = $(this).data('slug');
+    var embed = '<?php echo site_url(); ?>/?stream_embed=1&slug=' + slug;
+    navigator.clipboard.writeText(embed).then(function(){
+      alert('Embed URL copied to clipboard!');
+    });
+  });
+
+  $('.sm-preview-embed').on('click', function(){
+    var slug = $(this).data('slug');
+    var embed = '<?php echo site_url(); ?>/?stream_embed=1&slug=' + slug;
+    window.open(embed, '_blank');
+  });
+
+  $('.sm-delete-stream').on('click', function(){
+    var btn = $(this);
+    var postId = btn.data('post-id');
+    var cfUid = btn.data('cf-uid');
+    var bunnyGuid = btn.data('bunny-guid');
+
+    if (!confirm('Delete this stream?\n\nThis will delete:\n- WordPress post\n- Cloudflare video (if exists)\n- Bunny video (if exists)')) {
+      return;
+    }
+
+    btn.prop('disabled', true).text('Deleting...');
+
+    $.ajax({
+      url: ajaxurl,
+      type: 'POST',
+      data: {
+        action: 'sm_delete_stream',
+        nonce: '<?php echo wp_create_nonce('sm_ajax_nonce'); ?>',
+        post_id: postId,
+        cf_uid: cfUid,
+        bunny_guid: bunnyGuid
+      },
+      success: function(response){
+        if (response.success) {
+          alert('✓ Stream deleted: ' + response.data.message);
+          location.reload();
+        } else {
+          var msg = response.data.message;
+          if (response.data.partial_success) {
+            msg += '\n\nPartially succeeded: ' + response.data.partial_success.join(', ');
+          }
+          alert('✗ Delete failed: ' + msg);
+          btn.prop('disabled', false).text('Delete');
+        }
+      },
+      error: function(xhr, status, error){
+        alert('✗ Request failed: ' + error);
+        btn.prop('disabled', false).text('Delete');
+      }
+    });
+  });
+});
+</script>
