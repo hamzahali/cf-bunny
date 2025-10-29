@@ -76,7 +76,7 @@
         $key = get_option('sm_bunny_api_key','');
 
         echo '<table class="widefat fixed striped"><thead><tr>';
-        echo '<th>Title</th><th>Status</th><th>Category</th><th>Year</th><th>Batch</th><th>CF UID</th><th>GUID</th><th>Duration</th><th>Size</th><th>Created</th><th>Universal Embed</th><th>Actions</th>';
+        echo '<th>Title</th><th>Status</th><th>Category</th><th>Year</th><th>Batch</th><th>CF UID</th><th>GUID</th><th>Duration</th><th>Size</th><th>Created</th><th>Universal Embed</th><th>Retry Transfer</th><th>Actions</th>';
         echo '</tr></thead><tbody>';
         while($q->have_posts()){ $q->the_post();
             $pid = get_the_ID();
@@ -110,7 +110,21 @@
                 $status_color = 'color:green;';
             } elseif ($cfv && !$bg && $transfer_done) {
                 // Has CF video but no bunny guid, transfer was attempted
-                $display_status = 'RECORDING FAILED';
+                // Check if transfer is genuinely stuck (more than 15 minutes)
+                $transfer_time = strtotime($transfer_done);
+                $time_elapsed = time() - $transfer_time;
+
+                if ($time_elapsed > 900) { // 15 minutes
+                    $display_status = 'TRANSFER STUCK';
+                    $status_color = 'color:red;font-weight:bold;';
+                    $show_retry = true;
+                } else {
+                    $display_status = 'PROCESSING';
+                    $status_color = 'color:orange;';
+                }
+            } elseif ($cfv && !$bg && !$transfer_done) {
+                // Has CF video but no transfer attempted yet - webhook may have failed
+                $display_status = 'TRANSFER NOT STARTED';
                 $status_color = 'color:red;';
                 $show_retry = true;
             } elseif ($status_raw === 'processing') {
@@ -152,11 +166,7 @@
 
             echo '<tr data-post-id="'.esc_attr($pid).'">';
             echo '<td><strong>'.esc_html(get_the_title()).'</strong></td>';
-            echo '<td style="'.esc_attr($status_color).'"><strong>'.esc_html($display_status).'</strong>';
-            if ($show_retry) {
-                echo ' <button class="button button-small sm-retry-transfer" data-post-id="'.esc_attr($pid).'" data-cf-uid="'.esc_attr($cfv).'" style="margin-left:5px;">Retry</button>';
-            }
-            echo '</td>';
+            echo '<td style="'.esc_attr($status_color).'"><strong>'.esc_html($display_status).'</strong></td>';
             echo '<td>'.esc_html($category ? $category : '-').'</td>';
             echo '<td>'.esc_html($year ? $year : '-').'</td>';
             echo '<td>'.esc_html($batch ? $batch : '-').'</td>';
@@ -167,11 +177,15 @@
             echo '<td>'.esc_html(get_the_date()).'</td>';
             echo '<td><button class="button sm-copy-embed" data-slug="'.esc_attr($slug).'">📋 Copy Embed</button> <button class="button sm-preview-embed" data-slug="'.esc_attr($slug).'">👁️ Preview</button></td>';
             echo '<td>';
-            if ($cfv || $bg) {
-                echo '<button class="button button-small sm-delete-stream" data-post-id="'.esc_attr($pid).'" data-cf-uid="'.esc_attr($cfv).'" data-bunny-guid="'.esc_attr($bg).'" style="color:red;">Delete</button> ';
-            }
             if ($cfv && $show_retry) {
-                echo '<button class="button button-small sm-retry-transfer" data-post-id="'.esc_attr($pid).'" data-cf-uid="'.esc_attr($cfv).'">Retry</button>';
+                echo '<button class="button button-primary sm-retry-transfer" data-post-id="'.esc_attr($pid).'" data-cf-uid="'.esc_attr($cfv).'">🔄 Retry Transfer</button>';
+            } else {
+                echo '-';
+            }
+            echo '</td>';
+            echo '<td>';
+            if ($cfv || $bg) {
+                echo '<button class="button button-small sm-delete-stream" data-post-id="'.esc_attr($pid).'" data-cf-uid="'.esc_attr($cfv).'" data-bunny-guid="'.esc_attr($bg).'" style="color:red;">Delete</button>';
             }
             echo '</td>';
             echo '</tr>';

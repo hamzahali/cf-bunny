@@ -62,8 +62,32 @@ function sm_cf_webhook_handler(WP_REST_Request $req){
 
     $already = get_post_meta($post_id, '_sm_transfer_done', true);
     if (empty($already)) {
-        update_post_meta($post_id, '_sm_transfer_done', current_time('mysql'));
-        if (function_exists('sm_start_transfer_to_bunny')) sm_start_transfer_to_bunny($post_id, $video_uid, 0);
+        // Validate configuration before attempting transfer
+        $acc = get_option('sm_cf_account_id','');
+        $tok = get_option('sm_cf_api_token','');
+        $lib = get_option('sm_bunny_library_id','');
+        $key = get_option('sm_bunny_api_key','');
+
+        $config_missing = array();
+        if (empty($acc)) $config_missing[] = 'Cloudflare Account ID';
+        if (empty($tok)) $config_missing[] = 'Cloudflare API Token';
+        if (empty($lib)) $config_missing[] = 'Bunny Library ID';
+        if (empty($key)) $config_missing[] = 'Bunny API Key';
+
+        if (!empty($config_missing)) {
+            $missing_str = implode(', ', $config_missing);
+            if (function_exists('sm_log')) sm_log('ERROR',$post_id,"Transfer skipped - missing configuration: {$missing_str}",$video_uid);
+            update_post_meta($post_id, '_sm_transfer_done', current_time('mysql'));
+        } elseif (!function_exists('sm_start_transfer_to_bunny')) {
+            if (function_exists('sm_log')) sm_log('ERROR',$post_id,"Transfer skipped - sm_start_transfer_to_bunny function not available",$video_uid);
+            update_post_meta($post_id, '_sm_transfer_done', current_time('mysql'));
+        } else {
+            update_post_meta($post_id, '_sm_transfer_done', current_time('mysql'));
+            sm_start_transfer_to_bunny($post_id, $video_uid, 0);
+        }
+    } else {
+        // Transfer already attempted or in progress
+        if (function_exists('sm_log')) sm_log('INFO',$post_id,"Webhook {$event} received but transfer already marked done at {$already}",$video_uid);
     }
 
     return new WP_REST_Response(array('ok'=>true),200);

@@ -37,6 +37,21 @@ function sm_start_transfer_to_bunny($post_id, $cf_uid, $attempt){
     $lib = get_option('sm_bunny_library_id','');
     $key = get_option('sm_bunny_api_key','');
 
+    // Validate configuration at start
+    $config_errors = array();
+    if (empty($acc)) $config_errors[] = 'Cloudflare Account ID';
+    if (empty($tok)) $config_errors[] = 'Cloudflare API Token';
+    if (empty($lib)) $config_errors[] = 'Bunny Library ID';
+    if (empty($key)) $config_errors[] = 'Bunny API Key';
+
+    if (!empty($config_errors)) {
+        $error_str = implode(', ', $config_errors);
+        sm_log('ERROR',$post_id,"Transfer failed - missing configuration: {$error_str}",$cf_uid);
+        return;
+    }
+
+    sm_log('INFO',$post_id,"Starting transfer attempt #".($attempt+1)." to Bunny",$cf_uid);
+
     $mp4 = sm_cf_enable_and_wait_mp4($acc, $tok, $cf_uid, 300);
     if (is_wp_error($mp4)) { sm_log('ERROR',$post_id,'MP4 not ready: '.$mp4->get_error_message(),$cf_uid); sm_schedule_transfer_retry($post_id,$cf_uid,$attempt); return; }
 
@@ -49,8 +64,17 @@ function sm_start_transfer_to_bunny($post_id, $cf_uid, $attempt){
         'body'    => wp_json_encode(array('url'=>$mp4)),
         'timeout' => 60
     ));
-    if (is_wp_error($fetch) || wp_remote_retrieve_response_code($fetch) >= 300) {
-        sm_log('ERROR',$post_id,'Bunny fetch failed',$cf_uid); sm_schedule_transfer_retry($post_id,$cf_uid,$attempt); return;
+    if (is_wp_error($fetch)) {
+        sm_log('ERROR',$post_id,'Bunny fetch failed: '.$fetch->get_error_message(),$cf_uid);
+        sm_schedule_transfer_retry($post_id,$cf_uid,$attempt);
+        return;
+    }
+    $fetch_code = wp_remote_retrieve_response_code($fetch);
+    if ($fetch_code >= 300) {
+        $fetch_body = wp_remote_retrieve_body($fetch);
+        sm_log('ERROR',$post_id,"Bunny fetch failed with HTTP {$fetch_code}: {$fetch_body}",$cf_uid);
+        sm_schedule_transfer_retry($post_id,$cf_uid,$attempt);
+        return;
     }
 
     list($iframe,$hls) = sm_bunny_player_urls_for_guid($lib, $guid);
