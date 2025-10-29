@@ -152,8 +152,112 @@ jQuery(function($){
         btn.prop('disabled', false).text('Retry');
       }
     }).fail(function(){
-      alert('✗ Request failed');
+      alert('✗ ' + r.data.message);
       btn.prop('disabled', false).text('Retry');
+    });
+  });
+
+  // Create Stream Key
+  $('#sm-create-stream-key').on('click', function(){
+    var name = $('#sm-reg-name').val().trim();
+    if (!name) {
+      alert('Display name is required');
+      return;
+    }
+
+    var btn = $(this);
+    var $out = $('#sm-create-key-output');
+
+    btn.prop('disabled', true).text('Creating...');
+    $out.html('<span style="color: #666;">Creating live input in Cloudflare...</span>');
+
+    $.post(SM_AJAX.ajaxurl, {
+      action: 'sm_create_stream_key',
+      nonce: SM_AJAX.nonce,
+      name: name,
+      subject: $('#sm-reg-subject').val(),
+      category: $('#sm-reg-category').val(),
+      year: $('#sm-reg-year').val(),
+      batch: $('#sm-reg-batch').val()
+    }, function(r){
+      if (!r.success) {
+        $out.html('<span style="color: #d63638;">✗ Error: ' + (r.data && r.data.message || 'Unknown error') + '</span>');
+        btn.prop('disabled', false).text('Create Stream Key');
+        return;
+      }
+
+      $out.html('<span style="color: #00a32a;">✓ Stream key created successfully!</span>');
+
+      // Display details
+      var details = $('#sm-stream-key-details');
+      var html = '<h3>✓ Stream Key Created: ' + name + '</h3>';
+      html += '<p><strong>RTMP Setup for OBS:</strong></p>';
+      html += '<table class="widefat" style="margin-bottom: 15px;"><tbody>';
+      html += '<tr><th style="width: 200px;">Server URL:</th><td><code>' + r.data.rtmp_url + '</code> <button class="button button-small" onclick="navigator.clipboard.writeText(\'' + r.data.rtmp_url + '\')">Copy</button></td></tr>';
+      html += '<tr><th>Stream Key:</th><td><code>' + r.data.stream_key + '</code> <button class="button button-small" onclick="navigator.clipboard.writeText(\'' + r.data.stream_key + '\')">Copy</button></td></tr>';
+      html += '</tbody></table>';
+
+      if (r.data.cf_iframe) {
+        html += '<p><strong>Cloudflare Live Preview:</strong></p>';
+        html += '<div style="max-width: 640px; margin-bottom: 15px;"><div style="position: relative; padding-top: 56.25%;"><iframe src="' + r.data.cf_iframe + '" style="border: none; position: absolute; top: 0; left: 0; height: 100%; width: 100%;" allow="accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture;" allowfullscreen="true"></iframe></div></div>';
+      }
+
+      html += '<p><em>This stream key has been added to your registry and can be reused for multiple recordings.</em></p>';
+      html += '<p><button class="button" onclick="location.reload()">Done</button></p>';
+
+      details.html(html).slideDown();
+
+      // Clear form
+      $('#sm-reg-name, #sm-reg-subject, #sm-reg-category, #sm-reg-year, #sm-reg-batch').val('');
+      btn.prop('disabled', false).text('Create Stream Key');
+
+      // Scroll to details
+      $('html, body').animate({ scrollTop: details.offset().top - 50 }, 500);
+    }).fail(function(){
+      $out.html('<span style="color: #d63638;">✗ Request failed. Please try again.</span>');
+      btn.prop('disabled', false).text('Create Stream Key');
+    });
+  });
+
+  // Save Stream Key Edits
+  $('#sm-save-stream-key').on('click', function(){
+    var keyId = $('#sm-edit-key-id').val();
+    var name = $('#sm-edit-name').val().trim();
+
+    if (!name) {
+      alert('Display name is required');
+      return;
+    }
+
+    var btn = $(this);
+    var $out = $('#sm-edit-output');
+
+    btn.prop('disabled', true).text('Saving...');
+    $out.text('Saving...');
+
+    $.post(SM_AJAX.ajaxurl, {
+      action: 'sm_update_stream_key',
+      nonce: SM_AJAX.nonce,
+      key_id: keyId,
+      name: name,
+      subject: $('#sm-edit-subject').val(),
+      category: $('#sm-edit-category').val(),
+      year: $('#sm-edit-year').val(),
+      batch: $('#sm-edit-batch').val()
+    }, function(r){
+      if (r.success) {
+        $out.html('<span style="color: #00a32a;">✓ Saved!</span>');
+        setTimeout(function(){
+          $('#sm-edit-key-modal').fadeOut();
+          location.reload();
+        }, 1000);
+      } else {
+        $out.html('<span style="color: #d63638;">✗ ' + (r.data && r.data.message || 'Error saving') + '</span>');
+        btn.prop('disabled', false).text('Save Changes');
+      }
+    }).fail(function(){
+      $out.html('<span style="color: #d63638;">✗ Request failed</span>');
+      btn.prop('disabled', false).text('Save Changes');
     });
   });
 });

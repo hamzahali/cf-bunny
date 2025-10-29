@@ -35,38 +35,105 @@ function sm_cf_webhook_handler(WP_REST_Request $req){
 
     if (empty($event) || empty($video_uid)) { if (function_exists('sm_log')) sm_log('INFO', 0, 'Webhook received but not a video.ready payload'); return new WP_REST_Response(array('ok'=>true,'ignored'=>true),200); }
 
-    $post_id = 0;
-    if ($live_input) {
-        $q = get_posts(array('post_type'=>'stream_class','meta_key'=>'_sm_cf_live_input_uid','meta_value'=>$live_input,'posts_per_page'=>1,'fields'=>'ids'));
-        if ($q) $post_id = $q[0];
-    }
-    if (!$post_id) {
-        $q = get_posts(array('post_type'=>'stream_class','meta_key'=>'_sm_cf_video_uid','meta_value'=>$video_uid,'posts_per_page'=>1,'fields'=>'ids'));
-        if ($q) $post_id = $q[0];
+    // PHASE 1 ENHANCEMENT: Check if this video_uid already exists (uniqueness check)
+    $existing = get_posts(array(
+        'post_type' => 'stream_class',
+        'meta_key' => '_sm_cf_video_uid',
+        'meta_value' => $video_uid,
+        'posts_per_page' => 1,
+        'fields' => 'ids'
+    ));
+
+    if ($existing) {
+        // Video already processed, skip
+        if (function_exists('sm_log')) {
+            sm_log('INFO', $existing[0], "Webhook {$event} for {$video_uid} - already processed, skipping", $video_uid);
+        }
+        return new WP_REST_Response(array('ok'=>true,'already_processed'=>true),200);
     }
 
+    // Look up stream key in registry
+    $stream_key_data = null;
+    if ($live_input && function_exists('sm_get_stream_key_by_uid')) {
+        $stream_key_data = sm_get_stream_key_by_uid($live_input);
+    }
+
+    // Generate auto title: "Recording YYYY-MM-DD HH:MM"
+    $auto_title = 'Recording ' . current_time('Y-m-d H:i');
+
+    // Get incoming title from webhook (optional, usually not set)
     $incoming_title = '';
     if (isset($data['meta']['name'])) $incoming_title = sanitize_text_field($data['meta']['name']);
     elseif (isset($data['payload']['video']['meta']['name'])) $incoming_title = sanitize_text_field($data['payload']['video']['meta']['name']);
 
-    if (!$post_id){
-        $title = $incoming_title ? $incoming_title : ('Stream '.$video_uid);
-        $post_id = wp_insert_post(array('post_type'=>'stream_class','post_status'=>'publish','post_title'=>$title));
-        if ($live_input) update_post_meta($post_id,'_sm_cf_live_input_uid',$live_input);
-    }
-    if ($incoming_title) wp_update_post(array('ID'=>$post_id,'post_title'=>$incoming_title));
+    $title = $incoming_title ? $incoming_title : $auto_title;
 
+    // Create new post
+    $post_id = wp_insert_post(array(
+        'post_type' => 'stream_class',
+        'post_status' => 'publish',
+        'post_title' => $title
+    ));
+
+    if (!$post_id) {
+        if (function_exists('sm_log')) sm_log('ERROR', 0, "Failed to create post for video {$video_uid}", $video_uid);
+        return new WP_REST_Response(array('ok'=>false,'error'=>'failed_to_create_post'),500);
+    }
+
+    // Save core metadata
     update_post_meta($post_id, '_sm_cf_video_uid', $video_uid);
     update_post_meta($post_id, '_sm_status', 'processing');
-    if (function_exists('sm_log')) sm_log('INFO',$post_id,"Webhook {$event} for {$video_uid}",$video_uid);
 
-    $already = get_post_meta($post_id, '_sm_transfer_done', true);
-    if (empty($already)) {
-        update_post_meta($post_id, '_sm_transfer_done', current_time('mysql'));
-        if (function_exists('sm_start_transfer_to_bunny')) sm_start_transfer_to_bunny($post_id, $video_uid, 0);
+    if ($live_input) {
+        update_post_meta($post_id, '_sm_cf_live_input_uid', $live_input);
     }
 
-    return new WP_REST_Response(array('ok'=>true),200);
+    // Inherit metadata from stream key registry
+    if ($stream_key_data) {
+        if (!empty($stream_key_data->default_subject)) {
+            update_post_meta($post_id, '_sm_subject', $stream_key_data->default_subject);
+        }
+        if (!empty($stream_key_data->default_category)) {
+            update_post_meta($post_id, '_sm_category', $stream_key_data->default_category);
+        }
+        if (!empty($stream_key_data->default_year)) {
+            update_post_meta($post_id, '_sm_year', $stream_key_data->default_year);
+        }
+        if (!empty($stream_key_data->default_batch)) {
+            update_post_meta($post_id, '_sm_batch', $stream_key_data->default_batch);
+        }
+
+        // Update stream key stats
+        if (function_exists('sm_update_stream_key_stats')) {
+            sm_update_stream_key_stats($live_input);
+        }
+
+        if (function_exists('sm_log')) {
+            sm_log('INFO', $post_id, "Webhook {$event} for {$video_uid} - created new post with inherited metadata from '{$stream_key_data->name}'", $video_uid);
+        }
+    } else {
+        if (function_exists('sm_log')) {
+            sm_log('INFO', $post_id, "Webhook {$event} for {$video_uid} - created new post (no registry match)", $video_uid);
+        }
+    }
+
+    // Create notification
+    if (function_exists('sm_create_notification')) {
+        $notification_title = 'New recording imported';
+        $notification_message = 'Recording: ' . $title;
+        if ($stream_key_data) {
+            $notification_message .= ' from ' . $stream_key_data->name;
+        }
+        sm_create_notification('success', $notification_title, $notification_message, $post_id, $video_uid);
+    }
+
+    // Start transfer to Bunny
+    update_post_meta($post_id, '_sm_transfer_done', current_time('mysql'));
+    if (function_exists('sm_start_transfer_to_bunny')) {
+        sm_start_transfer_to_bunny($post_id, $video_uid, 0);
+    }
+
+    return new WP_REST_Response(array('ok'=>true,'post_id'=>$post_id,'auto_imported'=>true),200);
 }
 
 add_action('rest_api_init', function(){

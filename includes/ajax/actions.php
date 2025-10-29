@@ -220,3 +220,190 @@ add_action('wp_ajax_sm_retry_transfer', function(){
         wp_send_json_error(array('message'=>'Transfer function not available'));
     }
 });
+
+// Registry AJAX Handlers
+
+add_action('wp_ajax_sm_create_stream_key', function(){
+    check_ajax_referer('sm_ajax_nonce','nonce'); sm_require_cap();
+
+    $name = isset($_POST['name']) ? sanitize_text_field($_POST['name']) : '';
+    $subject = isset($_POST['subject']) ? sanitize_text_field($_POST['subject']) : '';
+    $category = isset($_POST['category']) ? sanitize_text_field($_POST['category']) : '';
+    $year = isset($_POST['year']) ? sanitize_text_field($_POST['year']) : '';
+    $batch = isset($_POST['batch']) ? sanitize_text_field($_POST['batch']) : '';
+
+    if (empty($name)) {
+        wp_send_json_error(array('message' => 'Display name is required'));
+    }
+
+    // Create live input in Cloudflare
+    $cf_acc = get_option('sm_cf_account_id','');
+    $cf_tok = get_option('sm_cf_api_token','');
+
+    if (empty($cf_acc) || empty($cf_tok)) {
+        wp_send_json_error(array('message' => 'Cloudflare credentials not configured'));
+    }
+
+    $res = sm_cf_create_live_input($cf_acc, $cf_tok, $name, array());
+
+    if (is_wp_error($res)) {
+        wp_send_json_error(array('message' => $res->get_error_message()));
+    }
+
+    $live_input_uid = isset($res['uid']) ? $res['uid'] : (isset($res['id']) ? $res['id'] : '');
+    $stream_key = isset($res['streamKey']) ? $res['streamKey'] : (isset($res['rtmps']['streamKey']) ? $res['rtmps']['streamKey'] : '');
+
+    if (empty($live_input_uid) || empty($stream_key)) {
+        wp_send_json_error(array('message' => 'Failed to get live input details from Cloudflare'));
+    }
+
+    // Enable recording
+    sm_cf_update_live_input($cf_acc, $cf_tok, $live_input_uid);
+
+    // Save to registry
+    $registry_id = sm_create_stream_key(array(
+        'name' => $name,
+        'live_input_uid' => $live_input_uid,
+        'stream_key' => $stream_key,
+        'default_subject' => $subject,
+        'default_category' => $category,
+        'default_year' => $year,
+        'default_batch' => $batch
+    ));
+
+    if (!$registry_id) {
+        wp_send_json_error(array('message' => 'Failed to save stream key to registry'));
+    }
+
+    $customer = trim(get_option('sm_cf_customer_subdomain',''));
+    $cf_iframe = $customer ? ('https://'.$customer.'.cloudflarestream.com/'.$live_input_uid.'/iframe') : '';
+
+    wp_send_json_success(array(
+        'registry_id' => $registry_id,
+        'live_input_uid' => $live_input_uid,
+        'stream_key' => $stream_key,
+        'cf_iframe' => $cf_iframe,
+        'rtmp_url' => 'rtmp://live.cloudflare.com/live'
+    ));
+});
+
+add_action('wp_ajax_sm_update_stream_key', function(){
+    check_ajax_referer('sm_ajax_nonce','nonce'); sm_require_cap();
+
+    $key_id = isset($_POST['key_id']) ? intval($_POST['key_id']) : 0;
+    $name = isset($_POST['name']) ? sanitize_text_field($_POST['name']) : '';
+    $subject = isset($_POST['subject']) ? sanitize_text_field($_POST['subject']) : '';
+    $category = isset($_POST['category']) ? sanitize_text_field($_POST['category']) : '';
+    $year = isset($_POST['year']) ? sanitize_text_field($_POST['year']) : '';
+    $batch = isset($_POST['batch']) ? sanitize_text_field($_POST['batch']) : '';
+
+    if (!$key_id) {
+        wp_send_json_error(array('message' => 'Stream key ID is required'));
+    }
+
+    if (empty($name)) {
+        wp_send_json_error(array('message' => 'Display name is required'));
+    }
+
+    $result = sm_update_stream_key($key_id, array(
+        'name' => $name,
+        'default_subject' => $subject,
+        'default_category' => $category,
+        'default_year' => $year,
+        'default_batch' => $batch
+    ));
+
+    if ($result) {
+        wp_send_json_success(array('message' => 'Stream key updated successfully'));
+    } else {
+        wp_send_json_error(array('message' => 'Failed to update stream key'));
+    }
+});
+
+add_action('wp_ajax_sm_delete_stream_key', function(){
+    check_ajax_referer('sm_ajax_nonce','nonce'); sm_require_cap();
+
+    $key_id = isset($_POST['key_id']) ? intval($_POST['key_id']) : 0;
+
+    if (!$key_id) {
+        wp_send_json_error(array('message' => 'Stream key ID is required'));
+    }
+
+    $result = sm_delete_stream_key($key_id);
+
+    if (is_wp_error($result)) {
+        wp_send_json_error($result->get_error_message());
+    } elseif ($result) {
+        wp_send_json_success(array('message' => 'Stream key deleted successfully'));
+    } else {
+        wp_send_json_error(array('message' => 'Failed to delete stream key'));
+    }
+});
+
+add_action('wp_ajax_sm_get_stream_key', function(){
+    check_ajax_referer('sm_ajax_nonce','nonce'); sm_require_cap();
+
+    $key_id = isset($_POST['key_id']) ? intval($_POST['key_id']) : 0;
+
+    if (!$key_id) {
+        wp_send_json_error(array('message' => 'Stream key ID is required'));
+    }
+
+    $stream_key = sm_get_stream_key_by_id($key_id);
+
+    if ($stream_key) {
+        wp_send_json_success($stream_key);
+    } else {
+        wp_send_json_error(array('message' => 'Stream key not found'));
+    }
+});
+
+// Notification AJAX Handlers
+
+add_action('wp_ajax_sm_mark_notification_read', function(){
+    check_ajax_referer('sm_ajax_nonce','nonce'); sm_require_cap();
+
+    $notification_id = isset($_POST['notification_id']) ? intval($_POST['notification_id']) : 0;
+
+    if (!$notification_id) {
+        wp_send_json_error(array('message' => 'Notification ID is required'));
+    }
+
+    $result = sm_mark_notification_read($notification_id);
+
+    if ($result) {
+        wp_send_json_success(array('message' => 'Notification marked as read'));
+    } else {
+        wp_send_json_error(array('message' => 'Failed to mark notification as read'));
+    }
+});
+
+add_action('wp_ajax_sm_mark_all_notifications_read', function(){
+    check_ajax_referer('sm_ajax_nonce','nonce'); sm_require_cap();
+
+    $result = sm_mark_all_notifications_read();
+
+    if ($result) {
+        wp_send_json_success(array('message' => 'All notifications marked as read'));
+    } else {
+        wp_send_json_error(array('message' => 'Failed to mark notifications as read'));
+    }
+});
+
+add_action('wp_ajax_sm_delete_notification', function(){
+    check_ajax_referer('sm_ajax_nonce','nonce'); sm_require_cap();
+
+    $notification_id = isset($_POST['notification_id']) ? intval($_POST['notification_id']) : 0;
+
+    if (!$notification_id) {
+        wp_send_json_error(array('message' => 'Notification ID is required'));
+    }
+
+    $result = sm_delete_notification($notification_id);
+
+    if ($result) {
+        wp_send_json_success(array('message' => 'Notification deleted'));
+    } else {
+        wp_send_json_error(array('message' => 'Failed to delete notification'));
+    }
+});
