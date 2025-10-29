@@ -222,3 +222,52 @@ function sm_admin_add_recorded_page(){ echo sm_view('admin/add-recorded'); }
 function sm_admin_logs_page(){ echo sm_view('admin/logs'); }
 function sm_admin_test_delete_page(){ echo sm_view('admin/test-delete'); }
 function sm_admin_settings_page(){ sm_render_settings_page(); }
+
+// Cron schedule management
+function sm_update_sync_schedule() {
+    // Clear existing schedule
+    $timestamp = wp_next_scheduled('sm_sync_cron_event');
+    if ($timestamp) {
+        wp_unschedule_event($timestamp, 'sm_sync_cron_event');
+    }
+
+    // Check if enabled
+    $enabled = get_option('sm_sync_enabled', 0);
+
+    if (!$enabled) {
+        return; // Don't schedule if disabled
+    }
+
+    // Get frequency
+    $frequency = get_option('sm_sync_frequency', 'hourly');
+
+    // Schedule event
+    if (!wp_next_scheduled('sm_sync_cron_event')) {
+        wp_schedule_event(time(), $frequency, 'sm_sync_cron_event');
+    }
+}
+
+// Add custom cron schedules
+add_filter('cron_schedules', function($schedules) {
+    if (!isset($schedules['hourly'])) {
+        $schedules['hourly'] = array(
+            'interval' => 3600,
+            'display' => __('Once Hourly', 'stream-manager')
+        );
+    }
+
+    $schedules['6hours'] = array(
+        'interval' => 21600,
+        'display' => __('Every 6 Hours', 'stream-manager')
+    );
+
+    $schedules['12hours'] = array(
+        'interval' => 43200,
+        'display' => __('Every 12 Hours', 'stream-manager')
+    );
+
+    return $schedules;
+});
+
+// Initialize cron on plugin load
+add_action('init', 'sm_update_sync_schedule');

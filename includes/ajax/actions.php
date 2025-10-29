@@ -407,3 +407,198 @@ add_action('wp_ajax_sm_delete_notification', function(){
         wp_send_json_error(array('message' => 'Failed to delete notification'));
     }
 });
+
+// Manual Sync AJAX Handlers
+
+add_action('wp_ajax_sm_scan_stream_key', function(){
+    check_ajax_referer('sm_ajax_nonce','nonce'); sm_require_cap();
+
+    $stream_key_id = isset($_POST['stream_key_id']) ? intval($_POST['stream_key_id']) : 0;
+
+    if (!$stream_key_id) {
+        wp_send_json_error(array('message' => 'Stream key ID is required'));
+    }
+
+    $stream_key = sm_get_stream_key_by_id($stream_key_id);
+
+    if (!$stream_key) {
+        wp_send_json_error(array('message' => 'Stream key not found'));
+    }
+
+    // Get Cloudflare credentials
+    $cf_acc = get_option('sm_cf_account_id','');
+    $cf_tok = get_option('sm_cf_api_token','');
+
+    if (empty($cf_acc) || empty($cf_tok)) {
+        wp_send_json_error(array('message' => 'Cloudflare credentials not configured'));
+    }
+
+    // Fetch recordings from Cloudflare
+    $recordings = sm_cf_get_live_input_videos($cf_acc, $cf_tok, $stream_key->live_input_uid);
+
+    if (is_wp_error($recordings)) {
+        wp_send_json_error(array('message' => $recordings->get_error_message()));
+    }
+
+    // Check which recordings are new (not in WordPress)
+    $new_recordings = array();
+
+    foreach ($recordings as $video) {
+        $video_uid = isset($video['uid']) ? $video['uid'] : '';
+
+        if (empty($video_uid)) {
+            continue;
+        }
+
+        // Check if already in WordPress
+        $existing = get_posts(array(
+            'post_type' => 'stream_class',
+            'meta_key' => '_sm_cf_video_uid',
+            'meta_value' => $video_uid,
+            'posts_per_page' => 1,
+            'fields' => 'ids'
+        ));
+
+        if (empty($existing)) {
+            // New recording
+            $new_recordings[] = array(
+                'video_uid' => $video_uid,
+                'stream_key_id' => $stream_key_id,
+                'stream_key_name' => $stream_key->name,
+                'live_input_uid' => $stream_key->live_input_uid,
+                'created' => isset($video['created']) ? $video['created'] : '',
+                'duration' => isset($video['duration']) ? $video['duration'] : 0,
+                'status' => isset($video['status']['state']) ? $video['status']['state'] : 'unknown'
+            );
+        }
+    }
+
+    wp_send_json_success(array(
+        'new_recordings' => $new_recordings,
+        'total_checked' => count($recordings)
+    ));
+});
+
+add_action('wp_ajax_sm_import_recordings', function(){
+    check_ajax_referer('sm_ajax_nonce','nonce'); sm_require_cap();
+
+    $recordings_json = isset($_POST['recordings']) ? $_POST['recordings'] : '';
+
+    if (empty($recordings_json)) {
+        wp_send_json_error('No recordings provided');
+    }
+
+    $recordings = json_decode(stripslashes($recordings_json), true);
+
+    if (!is_array($recordings) || empty($recordings)) {
+        wp_send_json_error('Invalid recordings data');
+    }
+
+    $imported = 0;
+    $errors = array();
+
+    foreach ($recordings as $rec) {
+        $video_uid = isset($rec['video_uid']) ? sanitize_text_field($rec['video_uid']) : '';
+        $stream_key_id = isset($rec['stream_key_id']) ? intval($rec['stream_key_id']) : 0;
+        $live_input_uid = isset($rec['live_input_uid']) ? sanitize_text_field($rec['live_input_uid']) : '';
+
+        if (empty($video_uid) || empty($stream_key_id)) {
+            $errors[] = 'Missing required data for a recording';
+            continue;
+        }
+
+        // Get stream key data
+        $stream_key = sm_get_stream_key_by_id($stream_key_id);
+
+        if (!$stream_key) {
+            $errors[] = "Stream key not found for video {$video_uid}";
+            continue;
+        }
+
+        // Check if already exists (double-check)
+        $existing = get_posts(array(
+            'post_type' => 'stream_class',
+            'meta_key' => '_sm_cf_video_uid',
+            'meta_value' => $video_uid,
+            'posts_per_page' => 1,
+            'fields' => 'ids'
+        ));
+
+        if ($existing) {
+            // Skip if already imported
+            continue;
+        }
+
+        // Create post
+        $title = 'Recording ' . current_time('Y-m-d H:i');
+
+        $post_id = wp_insert_post(array(
+            'post_type' => 'stream_class',
+            'post_status' => 'publish',
+            'post_title' => $title
+        ));
+
+        if (!$post_id || is_wp_error($post_id)) {
+            $errors[] = "Failed to create post for video {$video_uid}";
+            continue;
+        }
+
+        // Save metadata
+        update_post_meta($post_id, '_sm_cf_video_uid', $video_uid);
+        update_post_meta($post_id, '_sm_cf_live_input_uid', $live_input_uid);
+        update_post_meta($post_id, '_sm_status', 'processing');
+
+        // Inherit from stream key
+        if (!empty($stream_key->default_subject)) {
+            update_post_meta($post_id, '_sm_subject', $stream_key->default_subject);
+        }
+        if (!empty($stream_key->default_category)) {
+            update_post_meta($post_id, '_sm_category', $stream_key->default_category);
+        }
+        if (!empty($stream_key->default_year)) {
+            update_post_meta($post_id, '_sm_year', $stream_key->default_year);
+        }
+        if (!empty($stream_key->default_batch)) {
+            update_post_meta($post_id, '_sm_batch', $stream_key->default_batch);
+        }
+
+        // Update stream key stats
+        sm_update_stream_key_stats($live_input_uid);
+
+        // Create notification
+        sm_create_notification(
+            'success',
+            'Recording imported (manual sync)',
+            "Recording: {$title} from {$stream_key->name}",
+            $post_id,
+            $video_uid
+        );
+
+        // Log
+        if (function_exists('sm_log')) {
+            sm_log('INFO', $post_id, "Manual sync imported video {$video_uid} from '{$stream_key->name}'", $video_uid);
+        }
+
+        // Start transfer
+        update_post_meta($post_id, '_sm_transfer_done', current_time('mysql'));
+        if (function_exists('sm_start_transfer_to_bunny')) {
+            sm_start_transfer_to_bunny($post_id, $video_uid, 0);
+        }
+
+        $imported++;
+    }
+
+    // Log sync event
+    sm_log_sync_event('manual', count($recordings), $imported, 'success', "Manual sync imported {$imported} of " . count($recordings) . " recordings");
+
+    if (!empty($errors)) {
+        wp_send_json_success(array(
+            'imported' => $imported,
+            'errors' => $errors
+        ));
+    } else {
+        wp_send_json_success(array(
+            'imported' => $imported
+        ));
+    }
+});

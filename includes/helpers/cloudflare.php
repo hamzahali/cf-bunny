@@ -130,3 +130,47 @@ function sm_diagnose_cf_error($http_code, $response_body){
 
     return $diagnosis;
 }
+
+/**
+ * Get all recordings for a live input
+ *
+ * @param string $account_id Cloudflare account ID
+ * @param string $token API token
+ * @param string $live_input_uid Live input UID
+ * @return array|WP_Error Array of video objects or error
+ */
+function sm_cf_get_live_input_videos($account_id, $token, $live_input_uid) {
+    $url = "https://api.cloudflare.com/client/v4/accounts/{$account_id}/stream/live_inputs/{$live_input_uid}/videos";
+
+    $response = wp_remote_get($url, array(
+        'headers' => sm_cf_headers($token),
+        'timeout' => 30
+    ));
+
+    if (is_wp_error($response)) {
+        return $response;
+    }
+
+    $code = wp_remote_retrieve_response_code($response);
+    $body = wp_remote_retrieve_body($response);
+
+    if ($code < 200 || $code >= 300) {
+        return new WP_Error(
+            'cf_api_error',
+            "Cloudflare API error (HTTP {$code})",
+            array('response' => $response, 'body' => $body)
+        );
+    }
+
+    $json = json_decode($body, true);
+
+    if (!isset($json['success']) || !$json['success']) {
+        $error_msg = 'Unknown error';
+        if (isset($json['errors'][0]['message'])) {
+            $error_msg = $json['errors'][0]['message'];
+        }
+        return new WP_Error('cf_api_error', $error_msg);
+    }
+
+    return isset($json['result']) ? $json['result'] : array();
+}
