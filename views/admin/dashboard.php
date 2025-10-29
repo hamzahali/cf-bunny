@@ -74,6 +74,8 @@
     else {
         $lib = get_option('sm_bunny_library_id','');
         $key = get_option('sm_bunny_api_key','');
+        $cf_acc = get_option('sm_cf_account_id','');
+        $cf_tok = get_option('sm_cf_api_token','');
 
         echo '<table class="widefat fixed striped"><thead><tr>';
         echo '<th>Title</th><th>Status</th><th>Category</th><th>Year</th><th>Batch</th><th>CF UID</th><th>GUID</th><th>Duration</th><th>Size</th><th>Created</th><th>Universal Embed</th><th>Retry Transfer</th><th>Actions</th>';
@@ -132,10 +134,35 @@
                 $display_status = 'LIVE';
                 $status_color = 'color:blue;';
             } elseif ($status_raw === 'processing') {
-                $display_status = 'PROCESSING';
-                $status_color = 'color:orange;';
+                // Check if processing has been stuck for too long (post created > 15 mins ago)
+                $post_time = strtotime(get_the_date('Y-m-d H:i:s'));
+                $time_since_creation = time() - $post_time;
+
+                if ($time_since_creation > 900 && ($cfv || $cf_live_input) && !$bg) {
+                    // Stuck processing for > 15 mins with CF UID but no Bunny GUID
+                    $display_status = 'TRANSFER STUCK';
+                    $status_color = 'color:red;font-weight:bold;';
+                    $show_retry = true;
+                } else {
+                    $display_status = 'PROCESSING';
+                    $status_color = 'color:orange;';
+                }
             } elseif ($status_raw) {
                 $display_status = strtoupper($status_raw);
+            }
+
+            // Check if Cloudflare video actually exists before showing retry button
+            if ($show_retry && ($cfv || $cf_live_input) && !empty($cf_acc) && !empty($cf_tok)) {
+                $check_uid = $cfv ? $cfv : $cf_live_input;
+                $cf_exists = sm_cf_video_exists($cf_acc, $cf_tok, $check_uid);
+                if (!$cf_exists) {
+                    // CF video doesn't exist - can't retry transfer
+                    $show_retry = false;
+                    if ($display_status === 'TRANSFER STUCK' || $display_status === 'TRANSFER NOT STARTED') {
+                        $display_status = 'CF VIDEO DELETED';
+                        $status_color = 'color:gray;';
+                    }
+                }
             }
 
             // Get video metadata from Bunny if available

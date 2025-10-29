@@ -43,6 +43,14 @@ function sm_cf_enable_and_wait_mp4($account_id,$token,$video_uid,$timeout_sec=30
     return !empty($mp4) ? $mp4 : new WP_Error('mp4_timeout','MP4 not ready');
 }
 
+function sm_cf_video_exists($account_id,$token,$video_uid){
+    $url="https://api.cloudflare.com/client/v4/accounts/{$account_id}/stream/{$video_uid}";
+    $res=wp_remote_get($url,array('headers'=>array('Authorization'=>'Bearer '.$token),'timeout'=>10));
+    if (is_wp_error($res)) return false;
+    $code=wp_remote_retrieve_response_code($res);
+    return ($code>=200 && $code<300);
+}
+
 function sm_cf_delete_video($account_id,$token,$video_uid,$global_api_key='',$global_email=''){
     $url="https://api.cloudflare.com/client/v4/accounts/{$account_id}/stream/{$video_uid}";
 
