@@ -50,17 +50,31 @@ $stream_keys = sm_get_all_stream_keys();
     <table class="wp-list-table widefat fixed striped">
       <thead>
         <tr>
-          <th style="width: 20%;">Name</th>
-          <th style="width: 15%;">Subject</th>
-          <th style="width: 15%;">Category</th>
-          <th style="width: 10%;">Year</th>
+          <th style="width: 18%;">Name</th>
+          <th style="width: 12%;">Subject</th>
+          <th style="width: 12%;">Category</th>
+          <th style="width: 8%;">Year</th>
           <th style="width: 10%;">Recordings</th>
-          <th style="width: 15%;">Last Used</th>
-          <th style="width: 15%;">Actions</th>
+          <th style="width: 20%;">Live Stream Links</th>
+          <th style="width: 20%;">Actions</th>
         </tr>
       </thead>
       <tbody id="sm-stream-keys-list">
-        <?php foreach ($stream_keys as $key): ?>
+        <?php
+        $customer = trim(get_option('sm_cf_customer_subdomain',''));
+        foreach ($stream_keys as $key):
+          $cf_iframe = $customer ? ('https://'.$customer.'.cloudflarestream.com/'.$key->live_input_uid.'/iframe') : '';
+          $universal_embed = '';
+          $post_slug = '';
+
+          if ($key->post_id) {
+            $post = get_post($key->post_id);
+            if ($post) {
+              $post_slug = $post->post_name;
+              $universal_embed = site_url('/?stream_embed=1&slug='.$post_slug);
+            }
+          }
+        ?>
           <tr data-key-id="<?php echo esc_attr($key->id); ?>">
             <td>
               <strong><?php echo esc_html($key->name); ?></strong>
@@ -75,13 +89,13 @@ $stream_keys = sm_get_all_stream_keys();
               <?php endif; ?>
             </td>
             <td>
-              <?php
-                if ($key->last_used_at) {
-                  echo human_time_diff(strtotime($key->last_used_at), current_time('timestamp')) . ' ago';
-                } else {
-                  echo '<em>Never used</em>';
-                }
-              ?>
+              <?php if ($cf_iframe): ?>
+                <a href="<?php echo esc_url($cf_iframe); ?>" target="_blank" class="button button-small">CF Live</a>
+              <?php endif; ?>
+              <?php if ($universal_embed): ?>
+                <a href="<?php echo esc_url($universal_embed); ?>" target="_blank" class="button button-small">Universal</a>
+              <?php endif; ?>
+              <button class="button button-small sm-copy-live-links" data-cf="<?php echo esc_attr($cf_iframe); ?>" data-universal="<?php echo esc_attr($universal_embed); ?>">Copy Links</button>
             </td>
             <td>
               <button class="button button-small sm-view-key-details" data-key-id="<?php echo esc_attr($key->id); ?>">View Details</button>
@@ -213,6 +227,22 @@ jQuery(document).ready(function($) {
         $btn.prop('disabled', false).text('Delete');
       }
     });
+  });
+
+  // Copy Live Links
+  $('.sm-copy-live-links').on('click', function() {
+    var cfLink = $(this).data('cf');
+    var universalLink = $(this).data('universal');
+
+    var text = 'Cloudflare Live Iframe:\n' + cfLink + '\n\nUniversal Embed:\n' + universalLink;
+
+    var $temp = $('<textarea>');
+    $('body').append($temp);
+    $temp.val(text).select();
+    document.execCommand('copy');
+    $temp.remove();
+
+    alert('Live stream links copied to clipboard!');
   });
 });
 </script>

@@ -66,6 +66,7 @@ register_activation_hook(__FILE__, function(){
         name VARCHAR(255) NOT NULL,
         live_input_uid VARCHAR(255) NOT NULL,
         stream_key VARCHAR(255) NOT NULL,
+        post_id BIGINT UNSIGNED NULL,
         default_subject VARCHAR(255) NULL,
         default_category VARCHAR(255) NULL,
         default_year VARCHAR(255) NULL,
@@ -76,9 +77,16 @@ register_activation_hook(__FILE__, function(){
         total_duration INT DEFAULT 0,
         PRIMARY KEY (id),
         UNIQUE KEY live_input_uid (live_input_uid),
-        KEY name (name)
+        KEY name (name),
+        KEY post_id (post_id)
     ) {$charset};";
     dbDelta($sql);
+
+    // Add post_id column if it doesn't exist (for existing installations)
+    $registry_cols = $wpdb->get_col("DESC {$registry_table}", 0);
+    if (!in_array('post_id', $registry_cols)) {
+        $wpdb->query("ALTER TABLE {$registry_table} ADD COLUMN post_id BIGINT UNSIGNED NULL AFTER stream_key, ADD KEY post_id (post_id)");
+    }
 
     // Sync Log Table
     $sync_log_table = $wpdb->prefix . SM_SYNC_LOG_TABLE;

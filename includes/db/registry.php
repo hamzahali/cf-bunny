@@ -53,6 +53,7 @@ function sm_create_stream_key($data) {
         'name' => sanitize_text_field($data['name']),
         'live_input_uid' => sanitize_text_field($data['live_input_uid']),
         'stream_key' => sanitize_text_field($data['stream_key']),
+        'post_id' => isset($data['post_id']) ? intval($data['post_id']) : null,
         'default_subject' => isset($data['default_subject']) ? sanitize_text_field($data['default_subject']) : '',
         'default_category' => isset($data['default_category']) ? sanitize_text_field($data['default_category']) : '',
         'default_year' => isset($data['default_year']) ? sanitize_text_field($data['default_year']) : '',

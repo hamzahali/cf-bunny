@@ -260,11 +260,23 @@ add_action('wp_ajax_sm_create_stream_key', function(){
     // Enable recording
     sm_cf_update_live_input($cf_acc, $cf_tok, $live_input_uid);
 
-    // Save to registry
+    // Create WordPress post for this live stream first (so it shows in All Streams immediately)
+    $post_id = wp_insert_post(array(
+        'post_type' => 'stream_class',
+        'post_status' => 'publish',
+        'post_title' => $name . ' (Live Stream)'
+    ));
+
+    if (!$post_id) {
+        wp_send_json_error(array('message' => 'Failed to create WordPress post'));
+    }
+
+    // Save to registry with post_id
     $registry_id = sm_create_stream_key(array(
         'name' => $name,
         'live_input_uid' => $live_input_uid,
         'stream_key' => $stream_key,
+        'post_id' => $post_id,
         'default_subject' => $subject,
         'default_category' => $category,
         'default_year' => $year,
@@ -275,14 +287,40 @@ add_action('wp_ajax_sm_create_stream_key', function(){
         wp_send_json_error(array('message' => 'Failed to save stream key to registry'));
     }
 
+    // Update post metadata
+    update_post_meta($post_id, '_sm_status', 'live');
+    update_post_meta($post_id, '_sm_cf_live_input_uid', $live_input_uid);
+    update_post_meta($post_id, '_sm_cf_stream_key', $stream_key);
+    update_post_meta($post_id, '_sm_stream_key_registry_id', $registry_id);
+
+    // Save metadata
+    if (!empty($subject)) {
+        update_post_meta($post_id, '_sm_subject', $subject);
+    }
+    if (!empty($category)) {
+        update_post_meta($post_id, '_sm_category', $category);
+    }
+    if (!empty($year)) {
+        update_post_meta($post_id, '_sm_year', $year);
+    }
+    if (!empty($batch)) {
+        update_post_meta($post_id, '_sm_batch', $batch);
+    }
+
     $customer = trim(get_option('sm_cf_customer_subdomain',''));
     $cf_iframe = $customer ? ('https://'.$customer.'.cloudflarestream.com/'.$live_input_uid.'/iframe') : '';
 
+    $slug = $post_id ? get_post_field('post_name', $post_id) : '';
+    $universal_embed = $slug ? (site_url('/?stream_embed=1&slug='.$slug)) : '';
+
     wp_send_json_success(array(
         'registry_id' => $registry_id,
+        'post_id' => $post_id,
+        'slug' => $slug,
         'live_input_uid' => $live_input_uid,
         'stream_key' => $stream_key,
         'cf_iframe' => $cf_iframe,
+        'universal_embed' => $universal_embed,
         'rtmp_url' => 'rtmp://live.cloudflare.com/live'
     ));
 });
