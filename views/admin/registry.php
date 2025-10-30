@@ -106,6 +106,20 @@ $stream_keys = sm_get_all_stream_keys();
         <?php endforeach; ?>
       </tbody>
     </table>
+
+    <div style="margin-top: 15px; padding: 15px; background: #fff8e5; border-left: 4px solid #ffb900;">
+      <h3 style="margin-top: 0;">⚠️ Webhook Configuration</h3>
+      <p>For live stream detection to work, each stream key needs webhook events configured. New stream keys are automatically configured, but existing ones may need to be synced.</p>
+      <p>
+        <button class="button button-secondary" id="sm-sync-all-webhooks">
+          🔄 Sync All Webhooks
+        </button>
+        <span id="sm-sync-webhooks-status" style="margin-left: 10px;"></span>
+      </p>
+      <p style="margin: 0; font-size: 12px; color: #666;">
+        This will configure all stream keys to send live_input.connected events when streaming starts.
+      </p>
+    </div>
   <?php endif; ?>
 </div>
 

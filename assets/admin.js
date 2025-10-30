@@ -260,4 +260,37 @@ jQuery(function($){
       btn.prop('disabled', false).text('Save Changes');
     });
   });
+
+  // Sync All Webhooks
+  $('#sm-sync-all-webhooks').on('click', function(){
+    var btn = $(this);
+    var $status = $('#sm-sync-webhooks-status');
+
+    if (!confirm('Sync webhook configuration for all stream keys?\n\nThis will configure each stream key to send live stream events to WordPress.')) {
+      return;
+    }
+
+    btn.prop('disabled', true).text('Syncing...');
+    $status.html('<span style="color: #007cba;">⏳ Syncing webhooks...</span>');
+
+    $.post(SM_AJAX.ajaxurl, {
+      action: 'sm_sync_all_webhooks',
+      nonce: SM_AJAX.nonce
+    }, function(r){
+      if (r.success) {
+        var msg = '<span style="color: #00a32a;">✓ ' + r.data.message + '</span>';
+        if (r.data.errors && r.data.errors.length > 0) {
+          msg += '<br><span style="color: #d63638;">Errors: ' + r.data.errors.join(', ') + '</span>';
+        }
+        $status.html(msg);
+        btn.prop('disabled', false).text('🔄 Sync All Webhooks');
+      } else {
+        $status.html('<span style="color: #d63638;">✗ ' + (r.data && r.data.message || 'Failed to sync') + '</span>');
+        btn.prop('disabled', false).text('🔄 Sync All Webhooks');
+      }
+    }).fail(function(){
+      $status.html('<span style="color: #d63638;">✗ Request failed</span>');
+      btn.prop('disabled', false).text('🔄 Sync All Webhooks');
+    });
+  });
 });

@@ -260,6 +260,13 @@ add_action('wp_ajax_sm_create_stream_key', function(){
     // Enable recording
     sm_cf_update_live_input($cf_acc, $cf_tok, $live_input_uid);
 
+    // Configure webhook for this live input (critical for live detection!)
+    $webhook_result = sm_cf_set_live_input_webhook($cf_acc, $cf_tok, $live_input_uid);
+    if (is_wp_error($webhook_result)) {
+        error_log("Warning: Failed to configure webhook for live input {$live_input_uid}: " . $webhook_result->get_error_message());
+        // Don't fail the whole operation, just log the warning
+    }
+
     // Save to registry (NO post creation - posts created when streaming starts via webhook)
     $registry_id = sm_create_stream_key(array(
         'name' => $name,
@@ -358,6 +365,51 @@ add_action('wp_ajax_sm_get_stream_key', function(){
     } else {
         wp_send_json_error(array('message' => 'Stream key not found'));
     }
+});
+
+add_action('wp_ajax_sm_sync_all_webhooks', function(){
+    check_ajax_referer('sm_ajax_nonce','nonce'); sm_require_cap();
+
+    $cf_acc = get_option('sm_cf_account_id','');
+    $cf_tok = get_option('sm_cf_api_token','');
+
+    if (empty($cf_acc) || empty($cf_tok)) {
+        wp_send_json_error(array('message' => 'Cloudflare credentials not configured'));
+    }
+
+    // Get all stream keys
+    $stream_keys = sm_get_all_stream_keys();
+
+    if (empty($stream_keys)) {
+        wp_send_json_error(array('message' => 'No stream keys found'));
+    }
+
+    $success_count = 0;
+    $error_count = 0;
+    $errors = array();
+
+    foreach ($stream_keys as $key) {
+        $result = sm_cf_set_live_input_webhook($cf_acc, $cf_tok, $key->live_input_uid);
+
+        if (is_wp_error($result)) {
+            $error_count++;
+            $errors[] = $key->name . ': ' . $result->get_error_message();
+        } else {
+            $success_count++;
+        }
+    }
+
+    $message = "Synced {$success_count} stream keys successfully.";
+    if ($error_count > 0) {
+        $message .= " {$error_count} failed.";
+    }
+
+    wp_send_json_success(array(
+        'message' => $message,
+        'success_count' => $success_count,
+        'error_count' => $error_count,
+        'errors' => $errors
+    ));
 });
 
 // Notification AJAX Handlers
