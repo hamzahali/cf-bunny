@@ -3,6 +3,9 @@ if (!defined('ABSPATH')) exit;
 
 function sm_handle_stream_connected($data, $live_input) {
     // This handles video.live_input.connected event - when someone starts streaming
+    error_log("=== sm_handle_stream_connected CALLED ===");
+    error_log("Initial live_input: " . $live_input);
+    error_log("Full data: " . print_r($data, true));
 
     if (empty($live_input)) {
         // Try to extract from different payload structures
@@ -10,14 +13,18 @@ function sm_handle_stream_connected($data, $live_input) {
         if (empty($live_input) && isset($data['liveInput']['uid'])) {
             $live_input = $data['liveInput']['uid'];
         }
+        error_log("Extracted live_input from data: " . $live_input);
     }
 
     if (empty($live_input)) {
+        error_log("ERROR: No live input UID found in webhook payload");
         if (function_exists('sm_log')) {
             sm_log('INFO', 0, 'Stream connected webhook received but no live input UID found');
         }
         return new WP_REST_Response(array('ok'=>true,'ignored'=>true,'reason'=>'no_live_input_uid'),200);
     }
+
+    error_log("Processing live stream connection for live_input: " . $live_input);
 
     // Look up stream key in registry
     $stream_key_data = null;
@@ -32,6 +39,7 @@ function sm_handle_stream_connected($data, $live_input) {
     }
 
     // Create new post for this live stream
+    error_log("Creating WordPress post with title: " . $title);
     $post_id = wp_insert_post(array(
         'post_type' => 'stream_class',
         'post_status' => 'publish',
@@ -39,16 +47,20 @@ function sm_handle_stream_connected($data, $live_input) {
     ));
 
     if (!$post_id) {
+        error_log("ERROR: Failed to create WordPress post!");
         if (function_exists('sm_log')) {
             sm_log('ERROR', 0, "Failed to create post for live stream {$live_input}");
         }
         return new WP_REST_Response(array('ok'=>false,'error'=>'failed_to_create_post'),500);
     }
 
+    error_log("SUCCESS: Created post ID: " . $post_id);
+
     // Mark as live
     update_post_meta($post_id, '_sm_status', 'live');
     update_post_meta($post_id, '_sm_cf_live_input_uid', $live_input);
     update_post_meta($post_id, '_sm_live_session_start', current_time('mysql'));
+    error_log("Updated post meta for live status");
 
     // Inherit metadata from stream key registry
     if ($stream_key_data) {
@@ -100,7 +112,11 @@ function sm_verify_cf_webhook_signature($secret, $raw_body){
 function sm_cf_webhook_handler(WP_REST_Request $req){
     $raw = $req->get_body();
     $headers = $req->get_headers();
-    if (defined('WP_DEBUG') && WP_DEBUG) { error_log("==== Stream Manager Webhook Received ===="); error_log(print_r($headers, true)); error_log($raw); }
+
+    // ALWAYS log webhook events for debugging
+    error_log("==== Stream Manager Webhook Received ====");
+    error_log("Headers: " . print_r($headers, true));
+    error_log("Body: " . $raw);
 
     $bypass = get_option('sm_cf_bypass_secret', false);
     if (!$bypass) {
@@ -116,12 +132,25 @@ function sm_cf_webhook_handler(WP_REST_Request $req){
     $live_input = isset($data['liveInput']) ? $data['liveInput'] : (isset($data['payload']['video']['liveInput']) ? $data['payload']['video']['liveInput'] : '');
     if (!$event && !$video_uid && isset($data['uid']) && !empty($data['readyToStream'])) { $event='video.ready'; $video_uid=$data['uid']; $live_input = isset($data['liveInput']) ? $data['liveInput'] : ''; }
 
+    error_log("Parsed event: " . $event);
+    error_log("Video UID: " . $video_uid);
+    error_log("Live Input: " . $live_input);
+
     // Handle live stream connected event (stream starts)
-    if ($event === 'live_input.connected' || $event === 'video.live_input.connected') {
+    // Cloudflare may use different event names - try multiple variations
+    if ($event === 'live_input.connected' ||
+        $event === 'video.live_input.connected' ||
+        $event === 'live-input.connected' ||
+        $event === 'stream.live.connected') {
+        error_log("DETECTED LIVE STREAM START EVENT: " . $event);
         return sm_handle_stream_connected($data, $live_input);
     }
 
-    if (empty($event) || empty($video_uid)) { if (function_exists('sm_log')) sm_log('INFO', 0, 'Webhook received but not a video.ready payload'); return new WP_REST_Response(array('ok'=>true,'ignored'=>true),200); }
+    if (empty($event) || empty($video_uid)) {
+        if (function_exists('sm_log')) sm_log('INFO', 0, 'Webhook received but not a video.ready payload. Event: ' . $event);
+        error_log("Webhook ignored - event: {$event}, video_uid: {$video_uid}");
+        return new WP_REST_Response(array('ok'=>true,'ignored'=>true),200);
+    }
 
     // Check if this video_uid already exists (uniqueness check)
     $existing = get_posts(array(
