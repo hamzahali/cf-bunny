@@ -801,3 +801,172 @@ add_action('wp_ajax_sm_send_test_webhook', function(){
         ));
     }
 });
+
+// Webhook Configuration Test AJAX Handlers
+
+add_action('wp_ajax_sm_test_set_webhook', function(){
+    check_ajax_referer('sm_ajax_nonce','nonce'); sm_require_cap();
+
+    $live_input_uid = isset($_POST['live_input_uid']) ? sanitize_text_field($_POST['live_input_uid']) : '';
+
+    if (empty($live_input_uid)) {
+        wp_send_json_error(array('message' => 'Live input UID is required'));
+    }
+
+    $cf_acc = get_option('sm_cf_account_id','');
+    $cf_tok = get_option('sm_cf_api_token','');
+    $webhook_url = rest_url('stream/v1/cf-webhook');
+
+    if (empty($cf_acc) || empty($cf_tok)) {
+        wp_send_json_error(array('message' => 'Cloudflare credentials not configured'));
+    }
+
+    // Build request
+    $url = "https://api.cloudflare.com/client/v4/accounts/{$cf_acc}/stream/live_inputs/{$live_input_uid}";
+
+    $body = array(
+        'webhook' => array(
+            'url' => $webhook_url,
+            'events' => array(
+                'live_input.connected',
+                'live_input.disconnected',
+                'live_input.recording.ready',
+                'live_input.recording.error'
+            )
+        )
+    );
+
+    $body_json = wp_json_encode($body);
+
+    $headers = array(
+        'Authorization' => 'Bearer ' . $cf_tok,
+        'Content-Type' => 'application/json'
+    );
+
+    // Make request
+    $response = wp_remote_request($url, array(
+        'method' => 'PUT',
+        'headers' => $headers,
+        'body' => $body_json,
+        'timeout' => 30
+    ));
+
+    // Prepare detailed response
+    $request_headers_formatted = "Authorization: Bearer " . substr($cf_tok, 0, 10) . "...\nContent-Type: application/json";
+
+    if (is_wp_error($response)) {
+        wp_send_json_error(array(
+            'message' => 'Request failed: ' . $response->get_error_message(),
+            'request_url' => $url,
+            'request_headers' => $request_headers_formatted,
+            'request_body' => json_encode($body, JSON_PRETTY_PRINT)
+        ));
+    }
+
+    $code = wp_remote_retrieve_response_code($response);
+    $response_body = wp_remote_retrieve_body($response);
+    $response_body_formatted = json_encode(json_decode($response_body), JSON_PRETTY_PRINT);
+
+    if ($code >= 200 && $code < 300) {
+        $json = json_decode($response_body, true);
+        $webhook_set = isset($json['success']) && $json['success'];
+
+        wp_send_json_success(array(
+            'message' => 'Webhook configuration request succeeded!',
+            'http_code' => $code,
+            'request_url' => $url,
+            'request_headers' => $request_headers_formatted,
+            'request_body' => json_encode($body, JSON_PRETTY_PRINT),
+            'response_body' => $response_body_formatted,
+            'webhook_set' => $webhook_set
+        ));
+    } else {
+        wp_send_json_error(array(
+            'message' => "Request failed with HTTP {$code}",
+            'http_code' => $code,
+            'request_url' => $url,
+            'request_headers' => $request_headers_formatted,
+            'request_body' => json_encode($body, JSON_PRETTY_PRINT),
+            'response_body' => $response_body_formatted
+        ));
+    }
+});
+
+add_action('wp_ajax_sm_test_get_webhook', function(){
+    check_ajax_referer('sm_ajax_nonce','nonce'); sm_require_cap();
+
+    $live_input_uid = isset($_POST['live_input_uid']) ? sanitize_text_field($_POST['live_input_uid']) : '';
+
+    if (empty($live_input_uid)) {
+        wp_send_json_error(array('message' => 'Live input UID is required'));
+    }
+
+    $cf_acc = get_option('sm_cf_account_id','');
+    $cf_tok = get_option('sm_cf_api_token','');
+
+    if (empty($cf_acc) || empty($cf_tok)) {
+        wp_send_json_error(array('message' => 'Cloudflare credentials not configured'));
+    }
+
+    // Build request
+    $url = "https://api.cloudflare.com/client/v4/accounts/{$cf_acc}/stream/live_inputs/{$live_input_uid}";
+
+    $headers = array(
+        'Authorization' => 'Bearer ' . $cf_tok,
+        'Content-Type' => 'application/json'
+    );
+
+    // Make request
+    $response = wp_remote_get($url, array(
+        'headers' => $headers,
+        'timeout' => 30
+    ));
+
+    if (is_wp_error($response)) {
+        wp_send_json_error(array(
+            'message' => 'Request failed: ' . $response->get_error_message(),
+            'request_url' => $url
+        ));
+    }
+
+    $code = wp_remote_retrieve_response_code($response);
+    $response_body = wp_remote_retrieve_body($response);
+    $response_body_formatted = json_encode(json_decode($response_body), JSON_PRETTY_PRINT);
+
+    if ($code >= 200 && $code < 300) {
+        $json = json_decode($response_body, true);
+        $result = isset($json['result']) ? $json['result'] : array();
+
+        // Check webhook configuration
+        $webhook_configured = false;
+        $webhook_url = '';
+        $events = array();
+
+        if (isset($result['webhook']) && !empty($result['webhook'])) {
+            $webhook_configured = true;
+            $webhook_url = isset($result['webhook']['url']) ? $result['webhook']['url'] : '';
+            $events = isset($result['webhook']['events']) ? $result['webhook']['events'] : array();
+        }
+
+        $expected_url = rest_url('stream/v1/cf-webhook');
+
+        wp_send_json_success(array(
+            'http_code' => $code,
+            'request_url' => $url,
+            'response_body' => $response_body_formatted,
+            'webhook_configured' => $webhook_configured,
+            'webhook_url' => $webhook_url,
+            'events' => $events,
+            'expected_url' => $expected_url,
+            'url_matches' => ($webhook_url === $expected_url),
+            'has_connected_event' => in_array('live_input.connected', $events)
+        ));
+    } else {
+        wp_send_json_error(array(
+            'message' => "Request failed with HTTP {$code}",
+            'http_code' => $code,
+            'request_url' => $url,
+            'response_body' => $response_body_formatted
+        ));
+    }
+});

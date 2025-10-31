@@ -157,6 +157,7 @@ add_action('admin_menu', function(){
     add_submenu_page('sm_dashboard', __('Notifications','stream-manager'), __('Notifications','stream-manager') . $badge, 'manage_options', 'sm_notifications', 'sm_admin_notifications_page');
     add_submenu_page('sm_dashboard', __('Sync Recordings','stream-manager'), __('Sync Recordings','stream-manager'), 'manage_options', 'sm_sync', 'sm_admin_sync_page');
     add_submenu_page('sm_dashboard', __('Webhook Diagnostics','stream-manager'), __('🔧 Webhook Diagnostics','stream-manager'), 'manage_options', 'sm_webhook_diagnostics', 'sm_admin_webhook_diagnostics_page');
+    add_submenu_page('sm_dashboard', __('Webhook Test Lab','stream-manager'), __('🧪 Webhook Test Lab','stream-manager'), 'manage_options', 'sm_webhook_test', 'sm_admin_webhook_test_page');
     add_submenu_page('sm_dashboard', __('Add Live Video','stream-manager'), __('Add Live Video','stream-manager'), 'manage_options', 'sm_add_live', 'sm_admin_add_live_page');
     add_submenu_page('sm_dashboard', __('Add Recorded Video','stream-manager'), __('Add Recorded Video','stream-manager'), 'manage_options', 'sm_add_recorded', 'sm_admin_add_recorded_page');
     add_submenu_page('sm_dashboard', __('Transfer Logs','stream-manager'), __('Transfer Logs','stream-manager'), 'manage_options', 'sm_logs', 'sm_admin_logs_page');
@@ -227,6 +228,7 @@ function sm_admin_registry_page(){ echo sm_view('admin/registry'); }
 function sm_admin_notifications_page(){ echo sm_view('admin/notifications'); }
 function sm_admin_sync_page(){ echo sm_view('admin/sync'); }
 function sm_admin_webhook_diagnostics_page(){ echo sm_view('admin/webhook-diagnostics'); }
+function sm_admin_webhook_test_page(){ echo sm_view('admin/webhook-test'); }
 function sm_admin_add_live_page(){ echo sm_view('admin/add-live'); }
 function sm_admin_add_recorded_page(){ echo sm_view('admin/add-recorded'); }
 function sm_admin_logs_page(){ echo sm_view('admin/logs'); }
