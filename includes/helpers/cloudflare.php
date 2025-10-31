@@ -238,3 +238,47 @@ function sm_cf_set_live_input_webhook($account_id, $token, $live_input_uid, $web
 
     return $json['result'];
 }
+
+/**
+ * Get webhook configuration for a live input
+ *
+ * @param string $account_id Cloudflare account ID
+ * @param string $token API token
+ * @param string $live_input_uid Live input UID
+ * @return array|WP_Error Webhook config or error
+ */
+function sm_cf_get_live_input_webhook($account_id, $token, $live_input_uid) {
+    $url = "https://api.cloudflare.com/client/v4/accounts/{$account_id}/stream/live_inputs/{$live_input_uid}";
+
+    $response = wp_remote_get($url, array(
+        'headers' => sm_cf_headers($token),
+        'timeout' => 30
+    ));
+
+    if (is_wp_error($response)) {
+        return $response;
+    }
+
+    $code = wp_remote_retrieve_response_code($response);
+    $response_body = wp_remote_retrieve_body($response);
+
+    if ($code < 200 || $code >= 300) {
+        return new WP_Error(
+            'cf_get_failed',
+            "Failed to get live input (HTTP {$code})",
+            array('response' => $response, 'body' => $response_body)
+        );
+    }
+
+    $json = json_decode($response_body, true);
+
+    if (!isset($json['success']) || !$json['success']) {
+        $error_msg = 'Unknown error';
+        if (isset($json['errors'][0]['message'])) {
+            $error_msg = $json['errors'][0]['message'];
+        }
+        return new WP_Error('cf_get_failed', $error_msg);
+    }
+
+    return $json['result'];
+}

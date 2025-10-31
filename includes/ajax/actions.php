@@ -656,3 +656,148 @@ add_action('wp_ajax_sm_import_recordings', function(){
         ));
     }
 });
+
+// Webhook Diagnostics AJAX Handlers
+
+add_action('wp_ajax_sm_test_webhook_endpoint', function(){
+    check_ajax_referer('sm_ajax_nonce','nonce'); sm_require_cap();
+
+    $webhook_url = rest_url('stream/v1/cf-webhook');
+
+    // Test if endpoint is accessible
+    $response = wp_remote_post($webhook_url, array(
+        'body' => json_encode(array('test' => true)),
+        'headers' => array('Content-Type' => 'application/json'),
+        'timeout' => 10
+    ));
+
+    if (is_wp_error($response)) {
+        wp_send_json_error(array(
+            'message' => 'Endpoint not accessible: ' . $response->get_error_message()
+        ));
+    }
+
+    $code = wp_remote_retrieve_response_code($response);
+
+    // We expect either 200 (bypass enabled) or 401 (signature validation)
+    if ($code == 200 || $code == 401) {
+        wp_send_json_success(array(
+            'message' => "Endpoint is accessible (HTTP {$code}). Cloudflare can reach your site!",
+            'code' => $code
+        ));
+    } else {
+        wp_send_json_error(array(
+            'message' => "Endpoint returned unexpected HTTP {$code}. Check logs for details.",
+            'code' => $code
+        ));
+    }
+});
+
+add_action('wp_ajax_sm_check_webhook_config', function(){
+    check_ajax_referer('sm_ajax_nonce','nonce'); sm_require_cap();
+
+    $live_input_uid = isset($_POST['live_input_uid']) ? sanitize_text_field($_POST['live_input_uid']) : '';
+
+    if (empty($live_input_uid)) {
+        wp_send_json_error(array('message' => 'Live input UID is required'));
+    }
+
+    $cf_acc = get_option('sm_cf_account_id','');
+    $cf_tok = get_option('sm_cf_api_token','');
+
+    if (empty($cf_acc) || empty($cf_tok)) {
+        wp_send_json_error(array('message' => 'Cloudflare credentials not configured'));
+    }
+
+    // Get live input details from Cloudflare
+    $result = sm_cf_get_live_input_webhook($cf_acc, $cf_tok, $live_input_uid);
+
+    if (is_wp_error($result)) {
+        wp_send_json_error(array('message' => $result->get_error_message()));
+    }
+
+    // Check if webhook is configured
+    $webhook_configured = false;
+    $webhook_url = '';
+    $events = array();
+
+    if (isset($result['webhook']) && !empty($result['webhook'])) {
+        $webhook_configured = true;
+        $webhook_url = isset($result['webhook']['url']) ? $result['webhook']['url'] : '';
+        $events = isset($result['webhook']['events']) ? $result['webhook']['events'] : array();
+    }
+
+    wp_send_json_success(array(
+        'webhook_configured' => $webhook_configured,
+        'webhook_url' => $webhook_url,
+        'events' => $events,
+        'expected_url' => rest_url('stream/v1/cf-webhook'),
+        'has_connected_event' => in_array('live_input.connected', $events)
+    ));
+});
+
+add_action('wp_ajax_sm_send_test_webhook', function(){
+    check_ajax_referer('sm_ajax_nonce','nonce'); sm_require_cap();
+
+    $live_input_uid = isset($_POST['live_input_uid']) ? sanitize_text_field($_POST['live_input_uid']) : '';
+
+    if (empty($live_input_uid)) {
+        wp_send_json_error(array('message' => 'Live input UID is required'));
+    }
+
+    // Simulate a live_input.connected webhook from Cloudflare
+    $webhook_url = rest_url('stream/v1/cf-webhook');
+
+    $test_payload = array(
+        'event' => 'live_input.connected',
+        'uid' => $live_input_uid,
+        'liveInput' => $live_input_uid,
+        'test' => true,
+        'timestamp' => time()
+    );
+
+    // Check if bypass is enabled
+    $bypass = get_option('sm_cf_bypass_secret', false);
+
+    $headers = array('Content-Type' => 'application/json');
+
+    if (!$bypass) {
+        // Generate signature
+        $secret = get_option('sm_cf_webhook_secret','');
+        if (!empty($secret)) {
+            $body = json_encode($test_payload);
+            $timestamp = time();
+            $signature = hash_hmac('sha256', $timestamp . '.' . $body, $secret);
+            $headers['Webhook-Signature'] = 'time=' . $timestamp . ',sig1=' . $signature;
+        }
+    }
+
+    $response = wp_remote_post($webhook_url, array(
+        'body' => json_encode($test_payload),
+        'headers' => $headers,
+        'timeout' => 10
+    ));
+
+    if (is_wp_error($response)) {
+        wp_send_json_error(array(
+            'message' => 'Failed to send test webhook: ' . $response->get_error_message()
+        ));
+    }
+
+    $code = wp_remote_retrieve_response_code($response);
+    $body = wp_remote_retrieve_body($response);
+
+    if ($code >= 200 && $code < 300) {
+        wp_send_json_success(array(
+            'message' => "Test webhook sent successfully! Check debug logs and 'All Streams' page.",
+            'response_code' => $code,
+            'response_body' => $body
+        ));
+    } else {
+        wp_send_json_error(array(
+            'message' => "Test webhook failed with HTTP {$code}",
+            'response_code' => $code,
+            'response_body' => $body
+        ));
+    }
+});
