@@ -294,3 +294,279 @@ jQuery(function($){
     });
   });
 });
+
+  // ==========================================
+  // Direct Upload to Bunny Stream (TUS Protocol)
+  // ==========================================
+
+  var selectedFile = null;
+  var tusUpload = null;
+  var statusCheckInterval = null;
+  var uploadStartTime = null;
+
+  // Select video file button
+  $('#sm-select-video-btn, #sm-change-file-btn').on('click', function(){
+    $('#sm-video-file').click();
+  });
+
+  // File selected
+  $('#sm-video-file').on('change', function(e){
+    var file = e.target.files[0];
+    if (!file) return;
+
+    selectedFile = file;
+
+    // Format file size
+    var sizeText = formatFileSize(file.size);
+
+    // Show file info
+    $('#sm-file-name').text(file.name);
+    $('#sm-file-size').text(sizeText);
+    $('#sm-file-type').text(file.type || 'Unknown');
+    $('#sm-file-info').slideDown();
+    $('#sm-upload-section').slideDown();
+
+    // Reset progress
+    resetUploadUI();
+  });
+
+  // Start upload button
+  $('#sm-start-upload-btn').on('click', function(){
+    var title = $('#sm-vod-title').val().trim();
+
+    if (!title) {
+      alert('Please enter a video title');
+      $('#sm-vod-title').focus();
+      return;
+    }
+
+    if (!selectedFile) {
+      alert('Please select a video file');
+      return;
+    }
+
+    startBunnyUpload();
+  });
+
+  // Upload another button
+  $('#sm-upload-another-btn').on('click', function(){
+    location.reload();
+  });
+
+  // Retry upload button
+  $('#sm-retry-upload-btn').on('click', function(){
+    resetUploadUI();
+    startBunnyUpload();
+  });
+
+  // Cancel upload button
+  $('#sm-cancel-upload-btn').on('click', function(){
+    if (tusUpload) {
+      tusUpload.abort();
+    }
+    if (statusCheckInterval) {
+      clearInterval(statusCheckInterval);
+    }
+    location.reload();
+  });
+
+  // Start upload process
+  function startBunnyUpload(){
+    uploadStartTime = Date.now();
+
+    // Hide form, show progress
+    $('table.form-table').hide();
+    $('#sm-upload-section').hide();
+    $('#sm-upload-progress').slideDown();
+    $('#sm-progress-details').show();
+    $('#sm-upload-status').text('Creating video in Bunny...');
+
+    // Step 1: Create video in Bunny to get upload URL
+    $.post(SM_AJAX.ajaxurl, {
+      action: 'sm_create_bunny_video_for_upload',
+      nonce: SM_AJAX.nonce,
+      title: $('#sm-vod-title').val()
+    }, function(r){
+      if (r.success) {
+        var data = r.data;
+        // Step 2: Upload file using TUS
+        uploadFileToBunny(data.guid, data.upload_url, data.library_id);
+      } else {
+        showUploadError(r.data && r.data.message || 'Failed to create video in Bunny');
+      }
+    }).fail(function(){
+      showUploadError('Request failed. Please check your connection.');
+    });
+  }
+
+  // Upload file to Bunny using TUS protocol
+  function uploadFileToBunny(videoGuid, uploadUrl, libraryId){
+    $('#sm-upload-status').text('Uploading to Bunny Stream...');
+
+    var upload = new tus.Upload(selectedFile, {
+      endpoint: uploadUrl,
+      retryDelays: [0, 3000, 5000, 10000, 20000],
+      metadata: {
+        filetype: selectedFile.type,
+        title: $('#sm-vod-title').val()
+      },
+      onError: function(error) {
+        console.error('Upload error:', error);
+        showUploadError('Upload failed: ' + error.message);
+      },
+      onProgress: function(bytesUploaded, bytesTotal) {
+        var percentage = ((bytesUploaded / bytesTotal) * 100).toFixed(1);
+        updateProgressBar(percentage);
+
+        var uploadedMB = (bytesUploaded / (1024 * 1024)).toFixed(2);
+        var totalMB = (bytesTotal / (1024 * 1024)).toFixed(2);
+        $('#sm-upload-bytes').text(uploadedMB + ' MB');
+        $('#sm-upload-total').text(totalMB + ' MB');
+
+        // Calculate speed and ETA
+        var elapsedTime = (Date.now() - uploadStartTime) / 1000; // seconds
+        var speed = bytesUploaded / elapsedTime; // bytes per second
+        var speedMB = (speed / (1024 * 1024)).toFixed(2);
+        $('#sm-upload-speed').text(speedMB + ' MB/s');
+
+        var remainingBytes = bytesTotal - bytesUploaded;
+        var eta = remainingBytes / speed; // seconds
+        $('#sm-upload-eta').text(formatTime(eta));
+      },
+      onSuccess: function() {
+        console.log('Upload complete!');
+        $('#sm-upload-status').text('Upload complete!');
+        updateProgressBar(100);
+
+        // Hide progress details, show processing status
+        $('#sm-progress-details').fadeOut();
+        $('#sm-progress-title').text('✅ Upload Complete');
+        $('#sm-processing-status').fadeIn();
+
+        // Start monitoring video status
+        monitorBunnyVideoStatus(videoGuid, libraryId);
+      }
+    });
+
+    // Start the upload
+    upload.start();
+    tusUpload = upload;
+  }
+
+  // Monitor video processing status in Bunny
+  function monitorBunnyVideoStatus(videoGuid, libraryId){
+    var checkCount = 0;
+    var maxChecks = 120; // 10 minutes (5 second intervals)
+
+    statusCheckInterval = setInterval(function(){
+      checkCount++;
+
+      if (checkCount > maxChecks) {
+        clearInterval(statusCheckInterval);
+        showUploadError('Processing timeout. Video may still be encoding. Check "All Streams" page.');
+        return;
+      }
+
+      $.post(SM_AJAX.ajaxurl, {
+        action: 'sm_check_bunny_video_status',
+        nonce: SM_AJAX.nonce,
+        video_guid: videoGuid,
+        library_id: libraryId
+      }, function(r){
+        if (r.success) {
+          var status = r.data.status;
+          var statusText = r.data.status_text;
+
+          $('#sm-bunny-status').html('<span class="sm-status-badge sm-status-' + status + '">' + statusText + '</span>');
+
+          // Update encoding progress if available
+          if (r.data.encoding_progress) {
+            $('#sm-encoding-progress').show();
+            $('#sm-encoding-percent').text(r.data.encoding_progress + '%');
+          }
+
+          // Check if ready
+          if (status === 'ready') {
+            clearInterval(statusCheckInterval);
+            onVideoReady(videoGuid, libraryId, r.data);
+          } else if (status === 'error') {
+            clearInterval(statusCheckInterval);
+            showUploadError('Video processing failed: ' + (r.data.error_message || 'Unknown error'));
+          }
+        }
+      });
+    }, 5000); // Check every 5 seconds
+  }
+
+  // Video is ready - create WordPress post
+  function onVideoReady(videoGuid, libraryId, videoData){
+    $('#sm-processing-status').fadeOut();
+    $('#sm-bunny-status').html('<span class="sm-status-badge sm-status-ready">Ready</span>');
+
+    // Create WordPress post
+    $.post(SM_AJAX.ajaxurl, {
+      action: 'sm_save_bunny_uploaded_video',
+      nonce: SM_AJAX.nonce,
+      video_guid: videoGuid,
+      library_id: libraryId,
+      title: $('#sm-vod-title').val(),
+      subject: $('#sm-vod-subject').val(),
+      category: $('#sm-vod-category').val(),
+      year: $('#sm-vod-year').val(),
+      batch: $('#sm-vod-batch').val(),
+      iframe_url: videoData.iframe_url,
+      hls_url: videoData.hls_url
+    }, function(r){
+      if (r.success) {
+        $('#sm-complete-message').text('Video uploaded, processed, and added to WordPress successfully!');
+        $('#sm-upload-complete').fadeIn();
+      } else {
+        showUploadError('Video uploaded but failed to create WordPress post: ' + (r.data && r.data.message || 'Unknown error'));
+      }
+    }).fail(function(){
+      showUploadError('Video uploaded but failed to save to WordPress');
+    });
+  }
+
+  // Update progress bar
+  function updateProgressBar(percentage){
+    $('#sm-progress-bar').css('width', percentage + '%').text(Math.floor(percentage) + '%');
+  }
+
+  // Show error
+  function showUploadError(message){
+    $('#sm-upload-progress').find('> *').not('#sm-upload-error').hide();
+    $('#sm-error-message').text(message);
+    $('#sm-upload-error').fadeIn();
+  }
+
+  // Reset UI
+  function resetUploadUI(){
+    $('#sm-upload-error').hide();
+    $('#sm-upload-complete').hide();
+    $('#sm-processing-status').hide();
+    $('#sm-progress-details').show();
+    updateProgressBar(0);
+    $('#sm-upload-status').text('Initializing...');
+    $('#sm-upload-bytes').text('0 MB');
+    $('#sm-upload-speed').text('0 MB/s');
+    $('#sm-upload-eta').text('Calculating...');
+  }
+
+  // Format file size
+  function formatFileSize(bytes){
+    if (bytes === 0) return '0 Bytes';
+    var k = 1024;
+    var sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+    var i = Math.floor(Math.log(bytes) / Math.log(k));
+    return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
+  }
+
+  // Format time (seconds to human readable)
+  function formatTime(seconds){
+    if (!isFinite(seconds) || seconds < 0) return 'Calculating...';
+    if (seconds < 60) return Math.round(seconds) + ' seconds';
+    if (seconds < 3600) return Math.floor(seconds / 60) + ' minutes';
+    return Math.floor(seconds / 3600) + ' hours ' + Math.floor((seconds % 3600) / 60) + ' minutes';
+  }
+});

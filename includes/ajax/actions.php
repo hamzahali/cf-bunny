@@ -970,3 +970,179 @@ add_action('wp_ajax_sm_test_get_webhook', function(){
         ));
     }
 });
+
+// Direct Upload to Bunny AJAX Handlers
+
+add_action('wp_ajax_sm_create_bunny_video_for_upload', function(){
+    check_ajax_referer('sm_ajax_nonce','nonce'); sm_require_cap();
+
+    $title = isset($_POST['title']) ? sanitize_text_field($_POST['title']) : 'Untitled Video';
+
+    $lib = get_option('sm_bunny_library_id','');
+    $key = get_option('sm_bunny_api_key','');
+
+    if (empty($lib) || empty($key)) {
+        wp_send_json_error(array('message' => 'Bunny Stream credentials not configured'));
+    }
+
+    // Create video in Bunny
+    $guid = sm_bunny_create_video($lib, $key, $title);
+
+    if (is_wp_error($guid)) {
+        wp_send_json_error(array('message' => 'Failed to create video: ' . $guid->get_error_message()));
+    }
+
+    // Get TUS upload URL
+    $upload_url = "https://video.bunnycdn.com/tusupload";
+
+    wp_send_json_success(array(
+        'guid' => $guid,
+        'upload_url' => $upload_url,
+        'library_id' => $lib,
+        'message' => 'Video created successfully. Ready to upload.'
+    ));
+});
+
+add_action('wp_ajax_sm_check_bunny_video_status', function(){
+    check_ajax_referer('sm_ajax_nonce','nonce'); sm_require_cap();
+
+    $video_guid = isset($_POST['video_guid']) ? sanitize_text_field($_POST['video_guid']) : '';
+    $library_id = isset($_POST['library_id']) ? sanitize_text_field($_POST['library_id']) : '';
+
+    if (empty($video_guid) || empty($library_id)) {
+        wp_send_json_error(array('message' => 'Video GUID and Library ID are required'));
+    }
+
+    $key = get_option('sm_bunny_api_key','');
+
+    if (empty($key)) {
+        wp_send_json_error(array('message' => 'Bunny API key not configured'));
+    }
+
+    // Get video status from Bunny
+    $video_info = sm_bunny_get_video($library_id, $key, $video_guid);
+
+    if (is_wp_error($video_info)) {
+        wp_send_json_error(array('message' => 'Failed to check status: ' . $video_info->get_error_message()));
+    }
+
+    // Determine status
+    $status = 'unknown';
+    $status_text = 'Unknown';
+    $encoding_progress = null;
+    $error_message = null;
+
+    if (isset($video_info['status'])) {
+        $bunny_status = intval($video_info['status']);
+
+        // Bunny status codes:
+        // 0 = Queued
+        // 1 = Processing
+        // 2 = Encoding
+        // 3 = Finished
+        // 4 = Resolution finished
+        // 5 = Error
+        // 6 = Uploading
+
+        switch ($bunny_status) {
+            case 0:
+                $status = 'queued';
+                $status_text = 'Queued';
+                break;
+            case 1:
+            case 2:
+                $status = 'encoding';
+                $status_text = 'Encoding';
+                // Check encoding progress
+                if (isset($video_info['encodeProgress'])) {
+                    $encoding_progress = intval($video_info['encodeProgress']);
+                }
+                break;
+            case 3:
+            case 4:
+                $status = 'ready';
+                $status_text = 'Ready';
+                break;
+            case 5:
+                $status = 'error';
+                $status_text = 'Error';
+                if (isset($video_info['statusMessage'])) {
+                    $error_message = $video_info['statusMessage'];
+                }
+                break;
+            case 6:
+                $status = 'uploading';
+                $status_text = 'Uploading';
+                break;
+        }
+    }
+
+    // Get video URLs
+    $iframe_url = '';
+    $hls_url = '';
+
+    if ($status === 'ready') {
+        list($iframe_url, $hls_url) = sm_bunny_player_urls_for_guid($library_id, $video_guid);
+    }
+
+    wp_send_json_success(array(
+        'status' => $status,
+        'status_text' => $status_text,
+        'encoding_progress' => $encoding_progress,
+        'error_message' => $error_message,
+        'iframe_url' => $iframe_url,
+        'hls_url' => $hls_url
+    ));
+});
+
+add_action('wp_ajax_sm_save_bunny_uploaded_video', function(){
+    check_ajax_referer('sm_ajax_nonce','nonce'); sm_require_cap();
+
+    $video_guid = isset($_POST['video_guid']) ? sanitize_text_field($_POST['video_guid']) : '';
+    $library_id = isset($_POST['library_id']) ? sanitize_text_field($_POST['library_id']) : '';
+    $title = isset($_POST['title']) ? sanitize_text_field($_POST['title']) : 'Untitled';
+    $subject = isset($_POST['subject']) ? sanitize_text_field($_POST['subject']) : '';
+    $category = isset($_POST['category']) ? sanitize_text_field($_POST['category']) : '';
+    $year = isset($_POST['year']) ? sanitize_text_field($_POST['year']) : '';
+    $batch = isset($_POST['batch']) ? sanitize_text_field($_POST['batch']) : '';
+    $iframe_url = isset($_POST['iframe_url']) ? esc_url_raw($_POST['iframe_url']) : '';
+    $hls_url = isset($_POST['hls_url']) ? esc_url_raw($_POST['hls_url']) : '';
+
+    if (empty($video_guid) || empty($library_id)) {
+        wp_send_json_error(array('message' => 'Video GUID and Library ID are required'));
+    }
+
+    // Create WordPress post
+    $post_id = wp_insert_post(array(
+        'post_type' => 'stream_class',
+        'post_status' => 'publish',
+        'post_title' => $title
+    ));
+
+    if (!$post_id) {
+        wp_send_json_error(array('message' => 'Failed to create WordPress post'));
+    }
+
+    // Save metadata
+    update_post_meta($post_id, '_sm_status', 'vod');
+    update_post_meta($post_id, '_sm_bunny_guid', $video_guid);
+    update_post_meta($post_id, '_sm_bunny_iframe', $iframe_url);
+    update_post_meta($post_id, '_sm_bunny_hls', $hls_url);
+    update_post_meta($post_id, '_sm_subject', $subject);
+    update_post_meta($post_id, '_sm_category', $category);
+    update_post_meta($post_id, '_sm_year', $year);
+    update_post_meta($post_id, '_sm_batch', $batch);
+
+    // Log
+    if (function_exists('sm_log')) {
+        sm_log('INFO', $post_id, 'Direct upload to Bunny completed', '', '', '', $iframe_url);
+    }
+
+    $slug = get_post_field('post_name', $post_id);
+
+    wp_send_json_success(array(
+        'post_id' => $post_id,
+        'slug' => $slug,
+        'message' => 'Video saved successfully!'
+    ));
+});
