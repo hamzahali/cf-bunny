@@ -999,6 +999,7 @@ add_action('wp_ajax_sm_create_bunny_video_for_upload', function(){
         'guid' => $guid,
         'upload_url' => $upload_url,
         'library_id' => $lib,
+        'api_key' => $key,
         'message' => 'Video created successfully. Ready to upload.'
     ));
 });

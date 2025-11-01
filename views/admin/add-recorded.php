@@ -41,7 +41,7 @@
   </table>
 
   <div id="sm-upload-section" style="display:none; margin: 20px 0;">
-    <button class="button button-primary button-large" id="sm-start-upload-btn">🚀 Upload to Bunny Stream</button>
+    <button class="button button-primary button-large" id="sm-start-upload-btn">🚀 Upload to CDN</button>
   </div>
 
   <div id="sm-upload-progress" style="display:none; margin: 20px 0; padding: 20px; background: #f0f0f1; border-left: 4px solid #2271b1;">
