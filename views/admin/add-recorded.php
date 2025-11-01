@@ -1,6 +1,6 @@
 <div class="wrap">
-  <h1>Add Recorded Video (Direct Upload to Bunny)</h1>
-  <p>Upload video files directly to Bunny Stream. Supports: MP4, MOV, AVI, MKV, WebM, and more.</p>
+  <h1>Add Recorded Video (Direct Upload)</h1>
+  <p>Upload video files directly to CDN. Supports: MP4, MOV, AVI, MKV, WebM, and more.</p>
 
   <table class="form-table">
     <tr>
@@ -62,7 +62,7 @@
 
     <div id="sm-processing-status" style="display:none; margin-top: 20px; padding: 15px; background: #fff; border-left: 4px solid #ffb900;">
       <h4 style="margin-top: 0;">⏳ Processing Video...</h4>
-      <p id="sm-processing-message">Video uploaded successfully! Bunny is now processing and encoding your video...</p>
+      <p id="sm-processing-message">Video uploaded successfully! CDN is now processing and encoding your video...</p>
       <p style="margin: 10px 0;"><strong>Status:</strong> <span id="sm-bunny-status" style="font-weight: bold; color: #2271b1;">Checking...</span></p>
       <div id="sm-encoding-progress" style="display:none;">
         <p style="margin: 5px 0;"><strong>Encoding Progress:</strong> <span id="sm-encoding-percent">0%</span></p>
