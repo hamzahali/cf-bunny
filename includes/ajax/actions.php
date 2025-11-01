@@ -220,3 +220,933 @@ add_action('wp_ajax_sm_retry_transfer', function(){
         wp_send_json_error(array('message'=>'Transfer function not available'));
     }
 });
+
+// Registry AJAX Handlers
+
+add_action('wp_ajax_sm_create_stream_key', function(){
+    check_ajax_referer('sm_ajax_nonce','nonce'); sm_require_cap();
+
+    $name = isset($_POST['name']) ? sanitize_text_field($_POST['name']) : '';
+    $subject = isset($_POST['subject']) ? sanitize_text_field($_POST['subject']) : '';
+    $category = isset($_POST['category']) ? sanitize_text_field($_POST['category']) : '';
+    $year = isset($_POST['year']) ? sanitize_text_field($_POST['year']) : '';
+    $batch = isset($_POST['batch']) ? sanitize_text_field($_POST['batch']) : '';
+
+    if (empty($name)) {
+        wp_send_json_error(array('message' => 'Display name is required'));
+    }
+
+    // Create live input in Cloudflare
+    $cf_acc = get_option('sm_cf_account_id','');
+    $cf_tok = get_option('sm_cf_api_token','');
+
+    if (empty($cf_acc) || empty($cf_tok)) {
+        wp_send_json_error(array('message' => 'Cloudflare credentials not configured'));
+    }
+
+    $res = sm_cf_create_live_input($cf_acc, $cf_tok, $name, array());
+
+    if (is_wp_error($res)) {
+        wp_send_json_error(array('message' => $res->get_error_message()));
+    }
+
+    $live_input_uid = isset($res['uid']) ? $res['uid'] : (isset($res['id']) ? $res['id'] : '');
+    $stream_key = isset($res['streamKey']) ? $res['streamKey'] : (isset($res['rtmps']['streamKey']) ? $res['rtmps']['streamKey'] : '');
+
+    if (empty($live_input_uid) || empty($stream_key)) {
+        wp_send_json_error(array('message' => 'Failed to get live input details from Cloudflare'));
+    }
+
+    // Enable recording
+    sm_cf_update_live_input($cf_acc, $cf_tok, $live_input_uid);
+
+    // Configure webhook for this live input (critical for live detection!)
+    $webhook_result = sm_cf_set_live_input_webhook($cf_acc, $cf_tok, $live_input_uid);
+    if (is_wp_error($webhook_result)) {
+        error_log("Warning: Failed to configure webhook for live input {$live_input_uid}: " . $webhook_result->get_error_message());
+        // Don't fail the whole operation, just log the warning
+    }
+
+    // Save to registry (NO post creation - posts created when streaming starts via webhook)
+    $registry_id = sm_create_stream_key(array(
+        'name' => $name,
+        'live_input_uid' => $live_input_uid,
+        'stream_key' => $stream_key,
+        'default_subject' => $subject,
+        'default_category' => $category,
+        'default_year' => $year,
+        'default_batch' => $batch
+    ));
+
+    if (!$registry_id) {
+        wp_send_json_error(array('message' => 'Failed to save stream key to registry'));
+    }
+
+    $customer = trim(get_option('sm_cf_customer_subdomain',''));
+    $cf_iframe = $customer ? ('https://'.$customer.'.cloudflarestream.com/'.$live_input_uid.'/iframe') : '';
+    $universal_embed = site_url('/?stream_embed=1&live_input_uid='.$live_input_uid);
+
+    wp_send_json_success(array(
+        'registry_id' => $registry_id,
+        'live_input_uid' => $live_input_uid,
+        'stream_key' => $stream_key,
+        'cf_iframe' => $cf_iframe,
+        'universal_embed' => $universal_embed,
+        'rtmp_url' => 'rtmp://live.cloudflare.com/live'
+    ));
+});
+
+add_action('wp_ajax_sm_update_stream_key', function(){
+    check_ajax_referer('sm_ajax_nonce','nonce'); sm_require_cap();
+
+    $key_id = isset($_POST['key_id']) ? intval($_POST['key_id']) : 0;
+    $name = isset($_POST['name']) ? sanitize_text_field($_POST['name']) : '';
+    $subject = isset($_POST['subject']) ? sanitize_text_field($_POST['subject']) : '';
+    $category = isset($_POST['category']) ? sanitize_text_field($_POST['category']) : '';
+    $year = isset($_POST['year']) ? sanitize_text_field($_POST['year']) : '';
+    $batch = isset($_POST['batch']) ? sanitize_text_field($_POST['batch']) : '';
+
+    if (!$key_id) {
+        wp_send_json_error(array('message' => 'Stream key ID is required'));
+    }
+
+    if (empty($name)) {
+        wp_send_json_error(array('message' => 'Display name is required'));
+    }
+
+    $result = sm_update_stream_key($key_id, array(
+        'name' => $name,
+        'default_subject' => $subject,
+        'default_category' => $category,
+        'default_year' => $year,
+        'default_batch' => $batch
+    ));
+
+    if ($result) {
+        wp_send_json_success(array('message' => 'Stream key updated successfully'));
+    } else {
+        wp_send_json_error(array('message' => 'Failed to update stream key'));
+    }
+});
+
+add_action('wp_ajax_sm_delete_stream_key', function(){
+    check_ajax_referer('sm_ajax_nonce','nonce'); sm_require_cap();
+
+    $key_id = isset($_POST['key_id']) ? intval($_POST['key_id']) : 0;
+
+    if (!$key_id) {
+        wp_send_json_error(array('message' => 'Stream key ID is required'));
+    }
+
+    $result = sm_delete_stream_key($key_id);
+
+    if (is_wp_error($result)) {
+        wp_send_json_error($result->get_error_message());
+    } elseif ($result) {
+        wp_send_json_success(array('message' => 'Stream key deleted successfully'));
+    } else {
+        wp_send_json_error(array('message' => 'Failed to delete stream key'));
+    }
+});
+
+add_action('wp_ajax_sm_get_stream_key', function(){
+    check_ajax_referer('sm_ajax_nonce','nonce'); sm_require_cap();
+
+    $key_id = isset($_POST['key_id']) ? intval($_POST['key_id']) : 0;
+
+    if (!$key_id) {
+        wp_send_json_error(array('message' => 'Stream key ID is required'));
+    }
+
+    $stream_key = sm_get_stream_key_by_id($key_id);
+
+    if ($stream_key) {
+        wp_send_json_success($stream_key);
+    } else {
+        wp_send_json_error(array('message' => 'Stream key not found'));
+    }
+});
+
+add_action('wp_ajax_sm_sync_all_webhooks', function(){
+    check_ajax_referer('sm_ajax_nonce','nonce'); sm_require_cap();
+
+    $cf_acc = get_option('sm_cf_account_id','');
+    $cf_tok = get_option('sm_cf_api_token','');
+
+    if (empty($cf_acc) || empty($cf_tok)) {
+        wp_send_json_error(array('message' => 'Cloudflare credentials not configured'));
+    }
+
+    // Get all stream keys
+    $stream_keys = sm_get_all_stream_keys();
+
+    if (empty($stream_keys)) {
+        wp_send_json_error(array('message' => 'No stream keys found'));
+    }
+
+    $success_count = 0;
+    $error_count = 0;
+    $errors = array();
+
+    foreach ($stream_keys as $key) {
+        $result = sm_cf_set_live_input_webhook($cf_acc, $cf_tok, $key->live_input_uid);
+
+        if (is_wp_error($result)) {
+            $error_count++;
+            $errors[] = $key->name . ': ' . $result->get_error_message();
+        } else {
+            $success_count++;
+        }
+    }
+
+    $message = "Synced {$success_count} stream keys successfully.";
+    if ($error_count > 0) {
+        $message .= " {$error_count} failed.";
+    }
+
+    wp_send_json_success(array(
+        'message' => $message,
+        'success_count' => $success_count,
+        'error_count' => $error_count,
+        'errors' => $errors
+    ));
+});
+
+// Notification AJAX Handlers
+
+add_action('wp_ajax_sm_mark_notification_read', function(){
+    check_ajax_referer('sm_ajax_nonce','nonce'); sm_require_cap();
+
+    $notification_id = isset($_POST['notification_id']) ? intval($_POST['notification_id']) : 0;
+
+    if (!$notification_id) {
+        wp_send_json_error(array('message' => 'Notification ID is required'));
+    }
+
+    $result = sm_mark_notification_read($notification_id);
+
+    if ($result) {
+        wp_send_json_success(array('message' => 'Notification marked as read'));
+    } else {
+        wp_send_json_error(array('message' => 'Failed to mark notification as read'));
+    }
+});
+
+add_action('wp_ajax_sm_mark_all_notifications_read', function(){
+    check_ajax_referer('sm_ajax_nonce','nonce'); sm_require_cap();
+
+    $result = sm_mark_all_notifications_read();
+
+    if ($result) {
+        wp_send_json_success(array('message' => 'All notifications marked as read'));
+    } else {
+        wp_send_json_error(array('message' => 'Failed to mark notifications as read'));
+    }
+});
+
+add_action('wp_ajax_sm_delete_notification', function(){
+    check_ajax_referer('sm_ajax_nonce','nonce'); sm_require_cap();
+
+    $notification_id = isset($_POST['notification_id']) ? intval($_POST['notification_id']) : 0;
+
+    if (!$notification_id) {
+        wp_send_json_error(array('message' => 'Notification ID is required'));
+    }
+
+    $result = sm_delete_notification($notification_id);
+
+    if ($result) {
+        wp_send_json_success(array('message' => 'Notification deleted'));
+    } else {
+        wp_send_json_error(array('message' => 'Failed to delete notification'));
+    }
+});
+
+// Manual Sync AJAX Handlers
+
+add_action('wp_ajax_sm_scan_stream_key', function(){
+    check_ajax_referer('sm_ajax_nonce','nonce'); sm_require_cap();
+
+    $stream_key_id = isset($_POST['stream_key_id']) ? intval($_POST['stream_key_id']) : 0;
+
+    if (!$stream_key_id) {
+        wp_send_json_error(array('message' => 'Stream key ID is required'));
+    }
+
+    $stream_key = sm_get_stream_key_by_id($stream_key_id);
+
+    if (!$stream_key) {
+        wp_send_json_error(array('message' => 'Stream key not found'));
+    }
+
+    // Get Cloudflare credentials
+    $cf_acc = get_option('sm_cf_account_id','');
+    $cf_tok = get_option('sm_cf_api_token','');
+
+    if (empty($cf_acc) || empty($cf_tok)) {
+        wp_send_json_error(array('message' => 'Cloudflare credentials not configured'));
+    }
+
+    // Fetch recordings from Cloudflare
+    $recordings = sm_cf_get_live_input_videos($cf_acc, $cf_tok, $stream_key->live_input_uid);
+
+    if (is_wp_error($recordings)) {
+        wp_send_json_error(array('message' => $recordings->get_error_message()));
+    }
+
+    // Check which recordings are new (not in WordPress)
+    $new_recordings = array();
+
+    foreach ($recordings as $video) {
+        $video_uid = isset($video['uid']) ? $video['uid'] : '';
+
+        if (empty($video_uid)) {
+            continue;
+        }
+
+        // Check if already in WordPress
+        $existing = get_posts(array(
+            'post_type' => 'stream_class',
+            'meta_key' => '_sm_cf_video_uid',
+            'meta_value' => $video_uid,
+            'posts_per_page' => 1,
+            'fields' => 'ids'
+        ));
+
+        if (empty($existing)) {
+            // New recording
+            $new_recordings[] = array(
+                'video_uid' => $video_uid,
+                'stream_key_id' => $stream_key_id,
+                'stream_key_name' => $stream_key->name,
+                'live_input_uid' => $stream_key->live_input_uid,
+                'created' => isset($video['created']) ? $video['created'] : '',
+                'duration' => isset($video['duration']) ? $video['duration'] : 0,
+                'status' => isset($video['status']['state']) ? $video['status']['state'] : 'unknown'
+            );
+        }
+    }
+
+    wp_send_json_success(array(
+        'new_recordings' => $new_recordings,
+        'total_checked' => count($recordings)
+    ));
+});
+
+add_action('wp_ajax_sm_import_recordings', function(){
+    check_ajax_referer('sm_ajax_nonce','nonce'); sm_require_cap();
+
+    $recordings_json = isset($_POST['recordings']) ? $_POST['recordings'] : '';
+
+    if (empty($recordings_json)) {
+        wp_send_json_error('No recordings provided');
+    }
+
+    $recordings = json_decode(stripslashes($recordings_json), true);
+
+    if (!is_array($recordings) || empty($recordings)) {
+        wp_send_json_error('Invalid recordings data');
+    }
+
+    $imported = 0;
+    $errors = array();
+
+    foreach ($recordings as $rec) {
+        $video_uid = isset($rec['video_uid']) ? sanitize_text_field($rec['video_uid']) : '';
+        $stream_key_id = isset($rec['stream_key_id']) ? intval($rec['stream_key_id']) : 0;
+        $live_input_uid = isset($rec['live_input_uid']) ? sanitize_text_field($rec['live_input_uid']) : '';
+
+        if (empty($video_uid) || empty($stream_key_id)) {
+            $errors[] = 'Missing required data for a recording';
+            continue;
+        }
+
+        // Get stream key data
+        $stream_key = sm_get_stream_key_by_id($stream_key_id);
+
+        if (!$stream_key) {
+            $errors[] = "Stream key not found for video {$video_uid}";
+            continue;
+        }
+
+        // Check if already exists (double-check)
+        $existing = get_posts(array(
+            'post_type' => 'stream_class',
+            'meta_key' => '_sm_cf_video_uid',
+            'meta_value' => $video_uid,
+            'posts_per_page' => 1,
+            'fields' => 'ids'
+        ));
+
+        if ($existing) {
+            // Skip if already imported
+            continue;
+        }
+
+        // Create post
+        $title = 'Recording ' . current_time('Y-m-d H:i');
+
+        $post_id = wp_insert_post(array(
+            'post_type' => 'stream_class',
+            'post_status' => 'publish',
+            'post_title' => $title
+        ));
+
+        if (!$post_id || is_wp_error($post_id)) {
+            $errors[] = "Failed to create post for video {$video_uid}";
+            continue;
+        }
+
+        // Save metadata
+        update_post_meta($post_id, '_sm_cf_video_uid', $video_uid);
+        update_post_meta($post_id, '_sm_cf_live_input_uid', $live_input_uid);
+        update_post_meta($post_id, '_sm_status', 'processing');
+
+        // Inherit from stream key
+        if (!empty($stream_key->default_subject)) {
+            update_post_meta($post_id, '_sm_subject', $stream_key->default_subject);
+        }
+        if (!empty($stream_key->default_category)) {
+            update_post_meta($post_id, '_sm_category', $stream_key->default_category);
+        }
+        if (!empty($stream_key->default_year)) {
+            update_post_meta($post_id, '_sm_year', $stream_key->default_year);
+        }
+        if (!empty($stream_key->default_batch)) {
+            update_post_meta($post_id, '_sm_batch', $stream_key->default_batch);
+        }
+
+        // Update stream key stats
+        sm_update_stream_key_stats($live_input_uid);
+
+        // Create notification
+        sm_create_notification(
+            'success',
+            'Recording imported (manual sync)',
+            "Recording: {$title} from {$stream_key->name}",
+            $post_id,
+            $video_uid
+        );
+
+        // Log
+        if (function_exists('sm_log')) {
+            sm_log('INFO', $post_id, "Manual sync imported video {$video_uid} from '{$stream_key->name}'", $video_uid);
+        }
+
+        // Start transfer
+        update_post_meta($post_id, '_sm_transfer_done', current_time('mysql'));
+        if (function_exists('sm_start_transfer_to_bunny')) {
+            sm_start_transfer_to_bunny($post_id, $video_uid, 0);
+        }
+
+        $imported++;
+    }
+
+    // Log sync event
+    sm_log_sync_event('manual', count($recordings), $imported, 'success', "Manual sync imported {$imported} of " . count($recordings) . " recordings");
+
+    if (!empty($errors)) {
+        wp_send_json_success(array(
+            'imported' => $imported,
+            'errors' => $errors
+        ));
+    } else {
+        wp_send_json_success(array(
+            'imported' => $imported
+        ));
+    }
+});
+
+// Webhook Diagnostics AJAX Handlers
+
+add_action('wp_ajax_sm_test_webhook_endpoint', function(){
+    check_ajax_referer('sm_ajax_nonce','nonce'); sm_require_cap();
+
+    $webhook_url = rest_url('stream/v1/cf-webhook');
+
+    // Test if endpoint is accessible
+    $response = wp_remote_post($webhook_url, array(
+        'body' => json_encode(array('test' => true)),
+        'headers' => array('Content-Type' => 'application/json'),
+        'timeout' => 10
+    ));
+
+    if (is_wp_error($response)) {
+        wp_send_json_error(array(
+            'message' => 'Endpoint not accessible: ' . $response->get_error_message()
+        ));
+    }
+
+    $code = wp_remote_retrieve_response_code($response);
+
+    // We expect either 200 (bypass enabled) or 401 (signature validation)
+    if ($code == 200 || $code == 401) {
+        wp_send_json_success(array(
+            'message' => "Endpoint is accessible (HTTP {$code}). Cloudflare can reach your site!",
+            'code' => $code
+        ));
+    } else {
+        wp_send_json_error(array(
+            'message' => "Endpoint returned unexpected HTTP {$code}. Check logs for details.",
+            'code' => $code
+        ));
+    }
+});
+
+add_action('wp_ajax_sm_check_webhook_config', function(){
+    check_ajax_referer('sm_ajax_nonce','nonce'); sm_require_cap();
+
+    $live_input_uid = isset($_POST['live_input_uid']) ? sanitize_text_field($_POST['live_input_uid']) : '';
+
+    if (empty($live_input_uid)) {
+        wp_send_json_error(array('message' => 'Live input UID is required'));
+    }
+
+    $cf_acc = get_option('sm_cf_account_id','');
+    $cf_tok = get_option('sm_cf_api_token','');
+
+    if (empty($cf_acc) || empty($cf_tok)) {
+        wp_send_json_error(array('message' => 'Cloudflare credentials not configured'));
+    }
+
+    // Get live input details from Cloudflare
+    $result = sm_cf_get_live_input_webhook($cf_acc, $cf_tok, $live_input_uid);
+
+    if (is_wp_error($result)) {
+        wp_send_json_error(array('message' => $result->get_error_message()));
+    }
+
+    // Check if webhook is configured
+    $webhook_configured = false;
+    $webhook_url = '';
+    $events = array();
+
+    if (isset($result['webhook']) && !empty($result['webhook'])) {
+        $webhook_configured = true;
+        $webhook_url = isset($result['webhook']['url']) ? $result['webhook']['url'] : '';
+        $events = isset($result['webhook']['events']) ? $result['webhook']['events'] : array();
+    }
+
+    wp_send_json_success(array(
+        'webhook_configured' => $webhook_configured,
+        'webhook_url' => $webhook_url,
+        'events' => $events,
+        'expected_url' => rest_url('stream/v1/cf-webhook'),
+        'has_connected_event' => in_array('live_input.connected', $events)
+    ));
+});
+
+add_action('wp_ajax_sm_send_test_webhook', function(){
+    check_ajax_referer('sm_ajax_nonce','nonce'); sm_require_cap();
+
+    $live_input_uid = isset($_POST['live_input_uid']) ? sanitize_text_field($_POST['live_input_uid']) : '';
+
+    if (empty($live_input_uid)) {
+        wp_send_json_error(array('message' => 'Live input UID is required'));
+    }
+
+    // Simulate a live_input.connected webhook from Cloudflare
+    $webhook_url = rest_url('stream/v1/cf-webhook');
+
+    $test_payload = array(
+        'event' => 'live_input.connected',
+        'uid' => $live_input_uid,
+        'liveInput' => $live_input_uid,
+        'test' => true,
+        'timestamp' => time()
+    );
+
+    // Check if bypass is enabled
+    $bypass = get_option('sm_cf_bypass_secret', false);
+
+    $headers = array('Content-Type' => 'application/json');
+
+    if (!$bypass) {
+        // Generate signature
+        $secret = get_option('sm_cf_webhook_secret','');
+        if (!empty($secret)) {
+            $body = json_encode($test_payload);
+            $timestamp = time();
+            $signature = hash_hmac('sha256', $timestamp . '.' . $body, $secret);
+            $headers['Webhook-Signature'] = 'time=' . $timestamp . ',sig1=' . $signature;
+        }
+    }
+
+    $response = wp_remote_post($webhook_url, array(
+        'body' => json_encode($test_payload),
+        'headers' => $headers,
+        'timeout' => 10
+    ));
+
+    if (is_wp_error($response)) {
+        wp_send_json_error(array(
+            'message' => 'Failed to send test webhook: ' . $response->get_error_message()
+        ));
+    }
+
+    $code = wp_remote_retrieve_response_code($response);
+    $body = wp_remote_retrieve_body($response);
+
+    if ($code >= 200 && $code < 300) {
+        wp_send_json_success(array(
+            'message' => "Test webhook sent successfully! Check debug logs and 'All Streams' page.",
+            'response_code' => $code,
+            'response_body' => $body
+        ));
+    } else {
+        wp_send_json_error(array(
+            'message' => "Test webhook failed with HTTP {$code}",
+            'response_code' => $code,
+            'response_body' => $body
+        ));
+    }
+});
+
+// Webhook Configuration Test AJAX Handlers
+
+add_action('wp_ajax_sm_test_set_webhook', function(){
+    check_ajax_referer('sm_ajax_nonce','nonce'); sm_require_cap();
+
+    $live_input_uid = isset($_POST['live_input_uid']) ? sanitize_text_field($_POST['live_input_uid']) : '';
+
+    if (empty($live_input_uid)) {
+        wp_send_json_error(array('message' => 'Live input UID is required'));
+    }
+
+    $cf_acc = get_option('sm_cf_account_id','');
+    $cf_tok = get_option('sm_cf_api_token','');
+    $webhook_url = rest_url('stream/v1/cf-webhook');
+
+    if (empty($cf_acc) || empty($cf_tok)) {
+        wp_send_json_error(array('message' => 'Cloudflare credentials not configured'));
+    }
+
+    // Build request
+    $url = "https://api.cloudflare.com/client/v4/accounts/{$cf_acc}/stream/live_inputs/{$live_input_uid}";
+
+    $body = array(
+        'webhook' => array(
+            'url' => $webhook_url,
+            'events' => array(
+                'live_input.connected',
+                'live_input.disconnected',
+                'live_input.recording.ready',
+                'live_input.recording.error'
+            )
+        )
+    );
+
+    $body_json = wp_json_encode($body);
+
+    $headers = array(
+        'Authorization' => 'Bearer ' . $cf_tok,
+        'Content-Type' => 'application/json'
+    );
+
+    // Make request
+    $response = wp_remote_request($url, array(
+        'method' => 'PUT',
+        'headers' => $headers,
+        'body' => $body_json,
+        'timeout' => 30
+    ));
+
+    // Prepare detailed response
+    $request_headers_formatted = "Authorization: Bearer " . substr($cf_tok, 0, 10) . "...\nContent-Type: application/json";
+
+    if (is_wp_error($response)) {
+        wp_send_json_error(array(
+            'message' => 'Request failed: ' . $response->get_error_message(),
+            'request_url' => $url,
+            'request_headers' => $request_headers_formatted,
+            'request_body' => json_encode($body, JSON_PRETTY_PRINT)
+        ));
+    }
+
+    $code = wp_remote_retrieve_response_code($response);
+    $response_body = wp_remote_retrieve_body($response);
+    $response_body_formatted = json_encode(json_decode($response_body), JSON_PRETTY_PRINT);
+
+    if ($code >= 200 && $code < 300) {
+        $json = json_decode($response_body, true);
+        $webhook_set = isset($json['success']) && $json['success'];
+
+        wp_send_json_success(array(
+            'message' => 'Webhook configuration request succeeded!',
+            'http_code' => $code,
+            'request_url' => $url,
+            'request_headers' => $request_headers_formatted,
+            'request_body' => json_encode($body, JSON_PRETTY_PRINT),
+            'response_body' => $response_body_formatted,
+            'webhook_set' => $webhook_set
+        ));
+    } else {
+        wp_send_json_error(array(
+            'message' => "Request failed with HTTP {$code}",
+            'http_code' => $code,
+            'request_url' => $url,
+            'request_headers' => $request_headers_formatted,
+            'request_body' => json_encode($body, JSON_PRETTY_PRINT),
+            'response_body' => $response_body_formatted
+        ));
+    }
+});
+
+add_action('wp_ajax_sm_test_get_webhook', function(){
+    check_ajax_referer('sm_ajax_nonce','nonce'); sm_require_cap();
+
+    $live_input_uid = isset($_POST['live_input_uid']) ? sanitize_text_field($_POST['live_input_uid']) : '';
+
+    if (empty($live_input_uid)) {
+        wp_send_json_error(array('message' => 'Live input UID is required'));
+    }
+
+    $cf_acc = get_option('sm_cf_account_id','');
+    $cf_tok = get_option('sm_cf_api_token','');
+
+    if (empty($cf_acc) || empty($cf_tok)) {
+        wp_send_json_error(array('message' => 'Cloudflare credentials not configured'));
+    }
+
+    // Build request
+    $url = "https://api.cloudflare.com/client/v4/accounts/{$cf_acc}/stream/live_inputs/{$live_input_uid}";
+
+    $headers = array(
+        'Authorization' => 'Bearer ' . $cf_tok,
+        'Content-Type' => 'application/json'
+    );
+
+    // Make request
+    $response = wp_remote_get($url, array(
+        'headers' => $headers,
+        'timeout' => 30
+    ));
+
+    if (is_wp_error($response)) {
+        wp_send_json_error(array(
+            'message' => 'Request failed: ' . $response->get_error_message(),
+            'request_url' => $url
+        ));
+    }
+
+    $code = wp_remote_retrieve_response_code($response);
+    $response_body = wp_remote_retrieve_body($response);
+    $response_body_formatted = json_encode(json_decode($response_body), JSON_PRETTY_PRINT);
+
+    if ($code >= 200 && $code < 300) {
+        $json = json_decode($response_body, true);
+        $result = isset($json['result']) ? $json['result'] : array();
+
+        // Check webhook configuration
+        $webhook_configured = false;
+        $webhook_url = '';
+        $events = array();
+
+        if (isset($result['webhook']) && !empty($result['webhook'])) {
+            $webhook_configured = true;
+            $webhook_url = isset($result['webhook']['url']) ? $result['webhook']['url'] : '';
+            $events = isset($result['webhook']['events']) ? $result['webhook']['events'] : array();
+        }
+
+        $expected_url = rest_url('stream/v1/cf-webhook');
+
+        wp_send_json_success(array(
+            'http_code' => $code,
+            'request_url' => $url,
+            'response_body' => $response_body_formatted,
+            'webhook_configured' => $webhook_configured,
+            'webhook_url' => $webhook_url,
+            'events' => $events,
+            'expected_url' => $expected_url,
+            'url_matches' => ($webhook_url === $expected_url),
+            'has_connected_event' => in_array('live_input.connected', $events)
+        ));
+    } else {
+        wp_send_json_error(array(
+            'message' => "Request failed with HTTP {$code}",
+            'http_code' => $code,
+            'request_url' => $url,
+            'response_body' => $response_body_formatted
+        ));
+    }
+});
+
+// Direct Upload to Bunny AJAX Handlers
+
+add_action('wp_ajax_sm_create_bunny_video_for_upload', function(){
+    check_ajax_referer('sm_ajax_nonce','nonce'); sm_require_cap();
+
+    $title = isset($_POST['title']) ? sanitize_text_field($_POST['title']) : 'Untitled Video';
+
+    $lib = get_option('sm_bunny_library_id','');
+    $key = get_option('sm_bunny_api_key','');
+
+    if (empty($lib) || empty($key)) {
+        wp_send_json_error(array('message' => 'Bunny Stream credentials not configured'));
+    }
+
+    // Create video in Bunny
+    $guid = sm_bunny_create_video($lib, $key, $title);
+
+    if (is_wp_error($guid)) {
+        wp_send_json_error(array('message' => 'Failed to create video: ' . $guid->get_error_message()));
+    }
+
+    // Generate TUS authorization signature for Bunny Stream
+    // Signature formula: SHA256(library_id + api_key + expiration_time + video_id)
+    $expiration_time = time() + 3600; // 1 hour from now
+    $signature_string = $lib . $key . $expiration_time . $guid;
+    $authorization_signature = hash('sha256', $signature_string);
+
+    wp_send_json_success(array(
+        'guid' => $guid,
+        'library_id' => $lib,
+        'expiration_time' => $expiration_time,
+        'authorization_signature' => $authorization_signature,
+        'message' => 'Video created successfully. Ready to upload.'
+    ));
+});
+
+add_action('wp_ajax_sm_check_bunny_video_status', function(){
+    check_ajax_referer('sm_ajax_nonce','nonce'); sm_require_cap();
+
+    $video_guid = isset($_POST['video_guid']) ? sanitize_text_field($_POST['video_guid']) : '';
+    $library_id = isset($_POST['library_id']) ? sanitize_text_field($_POST['library_id']) : '';
+
+    if (empty($video_guid) || empty($library_id)) {
+        wp_send_json_error(array('message' => 'Video GUID and Library ID are required'));
+    }
+
+    $key = get_option('sm_bunny_api_key','');
+
+    if (empty($key)) {
+        wp_send_json_error(array('message' => 'Bunny API key not configured'));
+    }
+
+    // Get video status from Bunny
+    $video_info = sm_bunny_get_video($library_id, $key, $video_guid);
+
+    if (is_wp_error($video_info)) {
+        wp_send_json_error(array('message' => 'Failed to check status: ' . $video_info->get_error_message()));
+    }
+
+    // Determine status
+    $status = 'unknown';
+    $status_text = 'Unknown';
+    $encoding_progress = null;
+    $error_message = null;
+
+    if (isset($video_info['status'])) {
+        $bunny_status = intval($video_info['status']);
+
+        // Bunny status codes:
+        // 0 = Queued
+        // 1 = Processing
+        // 2 = Encoding
+        // 3 = Finished
+        // 4 = Resolution finished
+        // 5 = Error
+        // 6 = Uploading
+
+        switch ($bunny_status) {
+            case 0:
+                $status = 'queued';
+                $status_text = 'Queued';
+                break;
+            case 1:
+            case 2:
+                $status = 'encoding';
+                $status_text = 'Encoding';
+                // Check encoding progress
+                if (isset($video_info['encodeProgress'])) {
+                    $encoding_progress = intval($video_info['encodeProgress']);
+                }
+                break;
+            case 3:
+            case 4:
+                $status = 'ready';
+                $status_text = 'Ready';
+                break;
+            case 5:
+                $status = 'error';
+                $status_text = 'Error';
+                if (isset($video_info['statusMessage'])) {
+                    $error_message = $video_info['statusMessage'];
+                }
+                break;
+            case 6:
+                $status = 'uploading';
+                $status_text = 'Uploading';
+                break;
+        }
+    }
+
+    // Get video URLs
+    $iframe_url = '';
+    $hls_url = '';
+
+    if ($status === 'ready') {
+        list($iframe_url, $hls_url) = sm_bunny_player_urls_for_guid($library_id, $video_guid);
+    }
+
+    wp_send_json_success(array(
+        'status' => $status,
+        'status_text' => $status_text,
+        'encoding_progress' => $encoding_progress,
+        'error_message' => $error_message,
+        'iframe_url' => $iframe_url,
+        'hls_url' => $hls_url
+    ));
+});
+
+add_action('wp_ajax_sm_save_bunny_uploaded_video', function(){
+    check_ajax_referer('sm_ajax_nonce','nonce'); sm_require_cap();
+
+    $video_guid = isset($_POST['video_guid']) ? sanitize_text_field($_POST['video_guid']) : '';
+    $library_id = isset($_POST['library_id']) ? sanitize_text_field($_POST['library_id']) : '';
+    $title = isset($_POST['title']) ? sanitize_text_field($_POST['title']) : 'Untitled';
+    $subject = isset($_POST['subject']) ? sanitize_text_field($_POST['subject']) : '';
+    $category = isset($_POST['category']) ? sanitize_text_field($_POST['category']) : '';
+    $year = isset($_POST['year']) ? sanitize_text_field($_POST['year']) : '';
+    $batch = isset($_POST['batch']) ? sanitize_text_field($_POST['batch']) : '';
+    $iframe_url = isset($_POST['iframe_url']) ? esc_url_raw($_POST['iframe_url']) : '';
+    $hls_url = isset($_POST['hls_url']) ? esc_url_raw($_POST['hls_url']) : '';
+
+    if (empty($video_guid) || empty($library_id)) {
+        wp_send_json_error(array('message' => 'Video GUID and Library ID are required'));
+    }
+
+    // Create WordPress post
+    $post_id = wp_insert_post(array(
+        'post_type' => 'stream_class',
+        'post_status' => 'publish',
+        'post_title' => $title
+    ));
+
+    if (!$post_id) {
+        wp_send_json_error(array('message' => 'Failed to create WordPress post'));
+    }
+
+    // Save metadata
+    update_post_meta($post_id, '_sm_status', 'vod');
+    update_post_meta($post_id, '_sm_bunny_guid', $video_guid);
+    update_post_meta($post_id, '_sm_bunny_iframe', $iframe_url);
+    update_post_meta($post_id, '_sm_bunny_hls', $hls_url);
+    update_post_meta($post_id, '_sm_subject', $subject);
+    update_post_meta($post_id, '_sm_category', $category);
+    update_post_meta($post_id, '_sm_year', $year);
+    update_post_meta($post_id, '_sm_batch', $batch);
+
+    // Log
+    if (function_exists('sm_log')) {
+        sm_log('INFO', $post_id, 'Direct upload to Bunny completed', '', '', '', $iframe_url);
+    }
+
+    $slug = get_post_field('post_name', $post_id);
+
+    wp_send_json_success(array(
+        'post_id' => $post_id,
+        'slug' => $slug,
+        'message' => 'Video saved successfully!'
+    ));
+});
