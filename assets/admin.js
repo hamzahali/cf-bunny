@@ -293,7 +293,6 @@ jQuery(function($){
       btn.prop('disabled', false).text('🔄 Sync All Webhooks');
     });
   });
-});
 
   // ==========================================
   // Direct Upload to Bunny Stream (TUS Protocol)
