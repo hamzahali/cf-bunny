@@ -402,13 +402,14 @@ jQuery(function($){
   function uploadFileToBunny(videoGuid, uploadUrl, libraryId, apiKey){
     $('#sm-upload-status').text('Uploading to CDN...');
 
+    // Bunny Stream TUS endpoint includes library ID and video GUID in URL
+    var tusEndpoint = 'https://video.bunnycdn.com/library/' + libraryId + '/videos/' + videoGuid;
+
     var upload = new tus.Upload(selectedFile, {
-      endpoint: uploadUrl,
+      endpoint: tusEndpoint,
       retryDelays: [0, 3000, 5000, 10000, 20000],
       headers: {
-        'AuthorizationSignature': apiKey, // Bunny API key
-        'VideoId': videoGuid,
-        'LibraryId': libraryId
+        'AccessKey': apiKey
       },
       metadata: {
         filetype: selectedFile.type,
