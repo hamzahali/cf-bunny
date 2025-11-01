@@ -388,8 +388,8 @@ jQuery(function($){
     }, function(r){
       if (r.success) {
         var data = r.data;
-        // Step 2: Upload file using TUS
-        uploadFileToBunny(data.guid, data.upload_url, data.library_id, data.api_key);
+        // Step 2: Upload file using TUS with authorization signature
+        uploadFileToBunny(data.guid, data.library_id, data.expiration_time, data.authorization_signature);
       } else {
         showUploadError(r.data && r.data.message || 'Failed to create video in Bunny');
       }
@@ -399,17 +399,20 @@ jQuery(function($){
   }
 
   // Upload file to Bunny using TUS protocol
-  function uploadFileToBunny(videoGuid, uploadUrl, libraryId, apiKey){
+  function uploadFileToBunny(videoGuid, libraryId, expirationTime, authSignature){
     $('#sm-upload-status').text('Uploading to CDN...');
 
-    // Bunny Stream TUS endpoint includes library ID and video GUID in URL
-    var tusEndpoint = 'https://video.bunnycdn.com/library/' + libraryId + '/videos/' + videoGuid;
+    // Bunny Stream TUS endpoint
+    var tusEndpoint = 'https://video.bunnycdn.com/tusupload';
 
     var upload = new tus.Upload(selectedFile, {
       endpoint: tusEndpoint,
       retryDelays: [0, 3000, 5000, 10000, 20000],
       headers: {
-        'AccessKey': apiKey
+        'AuthorizationSignature': authSignature,
+        'AuthorizationExpire': expirationTime.toString(),
+        'VideoId': videoGuid,
+        'LibraryId': libraryId
       },
       metadata: {
         filetype: selectedFile.type,

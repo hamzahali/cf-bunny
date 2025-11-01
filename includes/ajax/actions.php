@@ -992,14 +992,17 @@ add_action('wp_ajax_sm_create_bunny_video_for_upload', function(){
         wp_send_json_error(array('message' => 'Failed to create video: ' . $guid->get_error_message()));
     }
 
-    // Get TUS upload URL
-    $upload_url = "https://video.bunnycdn.com/tusupload";
+    // Generate TUS authorization signature for Bunny Stream
+    // Signature formula: SHA256(library_id + api_key + expiration_time + video_id)
+    $expiration_time = time() + 3600; // 1 hour from now
+    $signature_string = $lib . $key . $expiration_time . $guid;
+    $authorization_signature = hash('sha256', $signature_string);
 
     wp_send_json_success(array(
         'guid' => $guid,
-        'upload_url' => $upload_url,
         'library_id' => $lib,
-        'api_key' => $key,
+        'expiration_time' => $expiration_time,
+        'authorization_signature' => $authorization_signature,
         'message' => 'Video created successfully. Ready to upload.'
     ));
 });
